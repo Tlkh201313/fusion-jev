@@ -1,0 +1,8 @@
+{
+  "name": "fusion-local",
+  "description": "Native Fusion support tools for Claude Code",
+  "owner": { "name": "Fusion contributors" },
+  "plugins": [
+    { "name": "fusion-jev", "source": "./plugin/fusion-jev-claude", "description": "Compact evidence and bounded routine choices for Claude Code" }
+  ]
+}

@@ -1,0 +1,74 @@
+{
+  "name": "fusion-jev-mcp",
+  "version": "0.3.0",
+  "description": "Local coding evidence and guarded official Jev choices for MCP hosts",
+  "type": "module",
+  "types": "./dist/index.d.ts",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Tlkh201313/fusion-jev.git"
+  },
+  "homepage": "https://github.com/Tlkh201313/fusion-jev#readme",
+  "bugs": {
+    "url": "https://github.com/Tlkh201313/fusion-jev/issues"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "bin": {
+    "fusion-jev": "dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "plugin",
+    "docs",
+    "README.md",
+    "CHANGELOG.md",
+    "CONTRIBUTING.md",
+    "SECURITY.md",
+    ".env.example",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.check.json",
+    "test": "tsx --import ./test/offline-env.ts --test --test-concurrency=1 test/*.test.ts",
+    "benchmark": "tsx benchmark/run.ts",
+    "benchmark:workspace": "tsx benchmark/workspace.ts",
+    "benchmark:overview": "tsx benchmark/overview.ts",
+    "benchmark:support": "tsx benchmark/support.ts",
+    "benchmark:workflows": "tsx benchmark/workflows.ts",
+    "benchmark:live": "node --env-file-if-exists=.env --import tsx examples/live.ts",
+    "demo": "tsx examples/workflow.ts",
+    "start": "node --env-file-if-exists=.env dist/cli.js stdio",
+    "start:http": "node --env-file-if-exists=.env dist/cli.js http",
+    "doctor": "node --env-file-if-exists=.env dist/cli.js doctor",
+    "pack:check": "npm pack --dry-run",
+    "pack:smoke": "node scripts/package-smoke.mjs",
+    "check": "npm run typecheck && npm test && npm run build",
+    "prepack": "npm run build",
+    "setup": "npm run build && node dist/cli.js setup"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "ajv": "8.20.0",
+    "better-sqlite3": "^12.11.1",
+    "cross-spawn": "^7.0.6",
+    "jose": "^6.2.12",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/cross-spawn": "^6.0.6",
+    "@types/node": "26.6.2",
+    "tsx": "4.23.15",
+    "typescript": "7.0.2"
+  }
+}

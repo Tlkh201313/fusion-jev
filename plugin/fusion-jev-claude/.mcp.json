@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "fusion": {
+      "command": "fusion-jev",
+      "args": ["stdio"],
+      "env": {
+        "FUSION_FALLBACK": "host",
+        "FUSION_MCP_PROFILE": "assist",
+        "FUSION_WORKSPACE_ROOT": "${CLAUDE_PROJECT_DIR}"
+      }
+    }
+  }
+}

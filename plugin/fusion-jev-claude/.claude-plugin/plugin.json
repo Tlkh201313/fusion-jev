@@ -1,0 +1,8 @@
+{
+  "name": "fusion-jev",
+  "version": "0.3.0",
+  "description": "Compact, recoverable coding evidence and bounded Jev choices for Claude Code",
+  "author": { "name": "Fusion contributors" },
+  "license": "MIT",
+  "keywords": ["mcp", "evidence", "tokens", "coding", "jev"]
+}

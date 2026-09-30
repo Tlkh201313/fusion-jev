@@ -1,0 +1,22 @@
+name: Reproducible bug
+description: Report incorrect evidence, integration failures, or a regression
+body:
+  - type: input
+    id: versions
+    attributes:
+      label: Fusion, host, OS and Node versions
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Include argv or tool arguments with fake secrets; do not attach transcripts or private evidence.
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Expected and observed result
+    validations:
+      required: true
