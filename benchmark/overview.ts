@@ -14,7 +14,7 @@ const router: RoutingService = {
 };
 const sessions: Array<{ client: Client; server: ReturnType<typeof createFusionMcpServer> }> = [];
 async function session(factory: typeof createFusionMcpServer, Service: typeof WorkspaceService) {
-  const server = factory({ router, config: loadConfig({}), workspace: new Service(process.cwd(), router) });
+  const server = factory({ router, config: loadConfig({ FUSION_MCP_PROFILE: 'full' }), workspace: new Service(process.cwd(), router) });
   const client = new Client({ name: 'overview-benchmark', version: '1' });
   const [left, right] = InMemoryTransport.createLinkedPair();
   await server.connect(left); await client.connect(right);

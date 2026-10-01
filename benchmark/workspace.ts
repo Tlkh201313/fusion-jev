@@ -17,7 +17,7 @@ const router: RoutingService = {
   async routeBatch() { providerCalls++; throw new Error('Workspace reads must not call a provider'); },
 };
 const service = new WorkspaceService(root, router);
-const server = createFusionMcpServer({ router, config: loadConfig({}), workspace: service });
+const server = createFusionMcpServer({ router, config: loadConfig({ FUSION_MCP_PROFILE: 'full' }), workspace: service });
 const client = new Client({ name: 'efficiency-benchmark', version: '1' });
 const [left, right] = InMemoryTransport.createLinkedPair();
 const bytes = (value: unknown) => Buffer.byteLength(JSON.stringify(value));
