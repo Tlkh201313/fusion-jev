@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
-import Database from 'better-sqlite3';
+import { Database } from './sqlite.js';
 import { safeWorkspaceBytes } from './workspace.js';
 import { isSecretName, redactSecrets } from './secrets.js';
 
@@ -302,7 +302,7 @@ export class EvidenceStore {
     return structuredClone(receipt);
   }
 
-  private withProvenanceDb<T>(work: (db: Database.Database) => T): T {
+  private withProvenanceDb<T>(work: (db: Database) => T): T {
     const db = new Database(join(this.storageDir!, 'research-provenance.sqlite'));
     try {
       db.pragma('busy_timeout = 5000');
@@ -322,7 +322,7 @@ export class EvidenceStore {
       throw new Error('Evidence receipt metadata corrupt');
   }
 
-  private assertUniqueDiskGeneration(db: Database.Database): void {
+  private assertUniqueDiskGeneration(db: Database): void {
     // Capture IDs are generated internally with randomUUID. A repeated ID across lifecycle
     // tables is an impossible API state; preserve every claim rather than guessing ownership.
     const collision = db.prepare(`SELECT id FROM (
@@ -348,7 +348,7 @@ export class EvidenceStore {
       order: row?.sequence ?? disk.order ?? info.mtimeMs };
   }
 
-  private removeReceiptRows(db: Database.Database, ids: string[]): void {
+  private removeReceiptRows(db: Database, ids: string[]): void {
     for (const id of ids) {
       db.prepare('INSERT INTO cleanup_pending (id, sha256, storedBytes, expiresAt) SELECT id, sha256, storedBytes, expiresAt FROM receipts WHERE id = ?').run(id);
       db.prepare('DELETE FROM provenance WHERE id = ?').run(id);
@@ -478,7 +478,7 @@ export class EvidenceStore {
     }).immediate());
   }
 
-  private pruneDiskRows(db: Database.Database): string[] {
+  private pruneDiskRows(db: Database): string[] {
     const removed: string[] = [];
     const expired = db.prepare('SELECT sequence, id, sha256, storedBytes, expiresAt FROM receipts WHERE expiresAt <= ?')
       .all(this.clock()) as ReceiptRow[];

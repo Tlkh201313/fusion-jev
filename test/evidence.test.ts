@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { EvidenceStore } from '../src/evidence.js';
-import Database from 'better-sqlite3';
+import { Database } from '../src/sqlite.js';
 
 const command = { kind: 'command' as const, cwd: process.cwd(), argv: ['node', '-e', ''], channel: 'stdout' as const };
 
@@ -238,7 +238,7 @@ test('two processes past initial cleanup cannot grow blocked disk captures beyon
   const gate = join(storageDir, 'release');
   const script = `
 import fs from 'node:fs';
-import Database from 'better-sqlite3';
+const { Database } = await import(${JSON.stringify(pathToFileURL(join(process.cwd(), 'src/sqlite.ts')).href)});
 const { EvidenceStore } = await import(${JSON.stringify(pathToFileURL(join(process.cwd(), 'src/evidence.ts')).href)});
 const store = new EvidenceStore({ storageDir: process.env.FUSION_TEST_STORAGE, maxEntries: 1,
   removeFile: () => { throw new Error('injected access denial'); } });

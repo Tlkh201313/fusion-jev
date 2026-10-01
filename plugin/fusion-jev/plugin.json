@@ -1,6 +1,6 @@
 {
   "name": "fusion-jev",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Recoverable compact coding evidence and bounded Jev choices",
   "author": { "name": "Fusion contributors" },
   "mcpServers": "./.mcp.json",

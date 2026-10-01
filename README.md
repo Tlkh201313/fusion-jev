@@ -8,7 +8,7 @@ This is an independent community integration, not affiliated with TypeSafe. The 
 
 ## Try it locally
 
-Requires Git, Node 22.12+ and npm:
+Requires Git, Node 22.13+ and npm:
 
 ```sh
 git clone https://github.com/Tlkh201313/fusion-jev.git
@@ -78,6 +78,6 @@ npm run benchmark
 npm run pack:smoke
 ```
 
-Tests run serially with credentials cleared. The evidence backend uses `better-sqlite3`; installation needs a supported Node/platform prebuild or the dependency's native build prerequisites. CI is configured for Windows, Linux and macOS; a configured matrix is not a claim that every platform has been verified for this source revision.
+Tests run serially with credentials cleared. The evidence backend uses Node's built-in `node:sqlite`, so installation needs no native build. CI is configured for Windows, Linux and macOS; a configured matrix is not a claim that every platform has been verified for this source revision.
 
 Read [market fit](docs/market-fit.md), [comparisons](docs/comparison.md) and the [launch plan](docs/launch-plan.md) for target users, alternatives and measurements still needed. [Contributing](CONTRIBUTING.md), [security](SECURITY.md), [release notes](CHANGELOG.md), [license](LICENSE).

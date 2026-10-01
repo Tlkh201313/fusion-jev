@@ -1,6 +1,6 @@
 # Local setup
 
-Fusion Jev is a community tool for local Codex and Claude Code workflows. It is not affiliated with TypeSafe. Node 22.12+ and npm are required. The source is MIT licensed; Jev is an external TypeSafe service.
+Fusion Jev is a community tool for local Codex and Claude Code workflows. It is not affiliated with TypeSafe. Node 22.13+ and npm are required. The source is MIT licensed; Jev is an external TypeSafe service.
 
 From a source checkout:
 

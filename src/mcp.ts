@@ -284,7 +284,7 @@ export function createFusionMcpServer({ router, config, workspace, workspaceFact
   const workspaceHint = workspace ? 'This server has a fixed workspace; omit root.'
     : workspaceFactory ? 'Use an exact approved absolute root; configure FUSION_WORKSPACE_ROOT or FUSION_WORKSPACE_ALLOWED_ROOTS first. Use path for subdirectories.' : '';
   const hasWorkspace = Boolean(workspace || workspaceFactory);
-  const server = new McpServer({ name: 'fusion-jev', title: 'Fusion Jev', version: '0.3.0' }, {
+  const server = new McpServer({ name: 'fusion-jev', title: 'Fusion Jev', version: '0.3.1' }, {
     instructions: `Prefer Fusion for supported inspection: assist for short tasks, inspect for known operations, evidence for expansion. Jev selects validated IDs only. Host owns reasoning, edits, command authorization and correctness. Run chosen commands through fusion-jev run -- program argv... by default (--raw for small exact output). Escalate here; RTK/native tools are fallback. ${hasWorkspace ? workspaceHint : 'No workspace is exposed.'}`.trim(),
   });
   // Profiles must restrict tools/call as well as tools/list: hidden tools are removed at registration.

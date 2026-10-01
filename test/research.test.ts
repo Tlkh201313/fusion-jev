@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
-import Database from 'better-sqlite3';
+import { Database } from '../src/sqlite.js';
 import { syncBuiltinESMExports } from 'node:module';
 import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -399,7 +399,7 @@ test('a paused committed writer rejects its receipt after another process replac
   await writeFile(clockFile, '1000');
   const script = `
 import fs from 'node:fs';
-import Database from 'better-sqlite3';
+const { Database } = await import(${JSON.stringify(pathToFileURL(join(process.cwd(), 'src/sqlite.ts')).href)});
 const { EvidenceStore } = await import(${JSON.stringify(pathToFileURL(join(process.cwd(), 'src/evidence.ts')).href)});
 const { importResearch } = await import(${JSON.stringify(pathToFileURL(join(process.cwd(), 'src/research.ts')).href)});
 const store = new EvidenceStore({ storageDir: process.env.FUSION_TEST_STORAGE,
@@ -441,7 +441,7 @@ test('crashes before and after transaction commit leave bounded orphan or commit
   const script = `
 import fs from 'node:fs';
 import { syncBuiltinESMExports } from 'node:module';
-import Database from 'better-sqlite3';
+const { Database } = await import(${JSON.stringify(pathToFileURL(join(process.cwd(), 'src/sqlite.ts')).href)});
 const original = fs.renameSync;
 fs.renameSync = (from, to) => { original(from, to); if (process.env.FUSION_TEST_POINT === 'before' && String(to).endsWith('.json')) process.exit(0); };
 syncBuiltinESMExports();

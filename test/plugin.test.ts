@@ -14,8 +14,13 @@ test('native Claude and portable Codex manifests keep distinct host APIs', () =>
   const manifest = JSON.parse(readFileSync(cc, 'utf8'));
   assert.equal(manifest.name, 'fusion-jev');
   const mcp = JSON.parse(readFileSync(join(root, 'plugin/fusion-jev-claude/.mcp.json'), 'utf8')).mcpServers.fusion;
-  assert.equal(mcp.command, 'fusion-jev');
-  assert.deepEqual(mcp.args, ['stdio']);
+  // Marketplace installs have no global binary: launch the pinned package through npx.
+  const version = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).version;
+  assert.equal(mcp.command, 'npx');
+  assert.deepEqual(mcp.args, ['-y', `--package=fusion-jev-mcp@${version}`, 'fusion-jev', 'stdio']);
+  for (const path of ['plugin/fusion-jev-claude/.claude-plugin/plugin.json', 'plugin/fusion-jev/plugin.json', 'plugin/fusion-jev/.codex-plugin/plugin.json'])
+    assert.equal(JSON.parse(readFileSync(join(root, path), 'utf8')).version, version, path);
+  assert.deepEqual(JSON.parse(readFileSync(join(root, 'plugin/fusion-jev/.mcp.json'), 'utf8')).mcpServers.fusion.args, mcp.args);
   assert.equal(mcp.env.FUSION_FALLBACK, 'host');
   assert.equal(mcp.env_vars, undefined, 'Claude uses env, not Codex env_vars');
   assert.equal(JSON.parse(readFileSync(codex, 'utf8')).name, 'fusion-jev');
