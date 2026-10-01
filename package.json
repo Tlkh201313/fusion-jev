@@ -1,10 +1,17 @@
 {
-  "name": "fusion-jev-mcp",
+  "name": "fusion-jev",
   "version": "0.3.0",
   "description": "Local coding evidence and guarded official Jev choices for MCP hosts",
   "type": "module",
   "types": "./dist/index.d.ts",
   "license": "MIT",
+  "author": "Fusion contributors",
+  "keywords": ["mcp", "mcp-server", "model-context-protocol", "claude-code", "codex", "ai-agents", "token-saving", "cli", "developer-tools"],
+  "mcpName": "io.github.tlkh201313/fusion-jev",
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Tlkh201313/fusion-jev.git"

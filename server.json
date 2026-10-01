@@ -1,0 +1,32 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.tlkh201313/fusion-jev",
+  "title": "Fusion Jev",
+  "description": "Local coding evidence and guarded official Jev choices for MCP hosts",
+  "repository": {
+    "url": "https://github.com/Tlkh201313/fusion-jev",
+    "source": "github"
+  },
+  "websiteUrl": "https://github.com/Tlkh201313/fusion-jev#readme",
+  "version": "0.3.0",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "fusion-jev",
+      "version": "0.3.0",
+      "runtimeHint": "npx",
+      "transport": { "type": "stdio" },
+      "packageArguments": [
+        { "type": "positional", "value": "stdio" }
+      ],
+      "environmentVariables": [
+        {
+          "name": "TYPESAFE_API_KEY",
+          "description": "Optional official TypeSafe key for Jev choices. Without it, Jev requests escalate to the host and deterministic local tools keep working.",
+          "isRequired": false,
+          "isSecret": true
+        }
+      ]
+    }
+  ]
+}

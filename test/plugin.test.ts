@@ -14,8 +14,8 @@ test('native Claude and portable Codex manifests keep distinct host APIs', () =>
   const manifest = JSON.parse(readFileSync(cc, 'utf8'));
   assert.equal(manifest.name, 'fusion-jev');
   const mcp = JSON.parse(readFileSync(join(root, 'plugin/fusion-jev-claude/.mcp.json'), 'utf8')).mcpServers.fusion;
-  assert.equal(mcp.command, 'fusion-jev');
-  assert.deepEqual(mcp.args, ['stdio']);
+  assert.equal(mcp.command, 'npx');
+  assert.deepEqual(mcp.args, ['-y', 'fusion-jev', 'stdio']);
   assert.equal(mcp.env.FUSION_FALLBACK, 'host');
   assert.equal(mcp.env_vars, undefined, 'Claude uses env, not Codex env_vars');
   assert.equal(JSON.parse(readFileSync(codex, 'utf8')).name, 'fusion-jev');

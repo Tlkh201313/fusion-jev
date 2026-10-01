@@ -1,0 +1,28 @@
+name: Feature request
+description: Suggest an improvement or a new capability
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What are you trying to do, and what gets in the way today? Include the host (Claude Code or Codex) and the kind of command or output involved.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What would you like to happen? Describe behavior, not implementation.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other tools or workarounds you tried, including native host features or RTK.
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Fake secrets only; do not attach transcripts or private evidence.

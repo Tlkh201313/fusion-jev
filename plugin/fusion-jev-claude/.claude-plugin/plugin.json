@@ -4,5 +4,7 @@
   "description": "Compact, recoverable coding evidence and bounded Jev choices for Claude Code",
   "author": { "name": "Fusion contributors" },
   "license": "MIT",
+  "repository": "https://github.com/Tlkh201313/fusion-jev",
+  "homepage": "https://github.com/Tlkh201313/fusion-jev",
   "keywords": ["mcp", "evidence", "tokens", "coding", "jev"]
 }

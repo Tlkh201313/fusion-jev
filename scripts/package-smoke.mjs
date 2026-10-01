@@ -36,7 +36,7 @@ try {
   const consumer = join(root, 'consumer');
   await mkdir(consumer);
   run([npmCli, 'install', '--prefix', consumer, '--omit=dev', '--no-audit', '--no-fund', join(root, packed.filename)]);
-  const pluginRoot = join(consumer, 'node_modules', 'fusion-jev-mcp', 'plugin', 'fusion-jev');
+  const pluginRoot = join(consumer, 'node_modules', 'fusion-jev', 'plugin', 'fusion-jev');
   const manifest = JSON.parse(await readFile(join(pluginRoot, '.codex-plugin', 'plugin.json'), 'utf8'));
   assert.equal(manifest.skills, undefined, 'Routine MCP use must not load a bundled skill file');
   assert.match(manifest.interface.defaultPrompt.join(' '), /Fusion.*inspection/i);
@@ -54,7 +54,7 @@ try {
     import { mkdtempSync, rmSync } from 'node:fs';
     import { tmpdir } from 'node:os';
     import { join } from 'node:path';
-    import { FusionRouter, FusionExecutor, EvidenceStore, loadConfig, createFusionMcpServer } from 'fusion-jev-mcp';
+    import { FusionRouter, FusionExecutor, EvidenceStore, loadConfig, createFusionMcpServer } from 'fusion-jev';
     assert.equal(typeof FusionExecutor, 'function');
     assert.equal(typeof createFusionMcpServer, 'function');
     const router = new FusionRouter({config: loadConfig({})});
@@ -77,13 +77,15 @@ try {
     import {resolve, delimiter} from 'node:path';
     import {Client} from '@modelcontextprotocol/sdk/client/index.js';
     import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
-    const plugin = resolve('node_modules/fusion-jev-mcp/plugin/fusion-jev-claude');
+    const plugin = resolve('node_modules/fusion-jev/plugin/fusion-jev-claude');
     const config = JSON.parse(readFileSync(resolve(plugin, '.mcp.json'), 'utf8')).mcpServers.fusion;
     assert.equal(config.env_vars, undefined);
     const client = new Client({name:'claude-plugin-consumer',version:'1'});
     try {
       assert.equal(config.env.FUSION_WORKSPACE_ROOT,'\${CLAUDE_PROJECT_DIR}');
-      await client.connect(new StdioClientTransport({command:config.command,args:config.args,
+      assert.equal(config.command,'npx');assert.deepEqual(config.args,['-y','fusion-jev','stdio']);
+      // Launch the locally installed bin: same package the npx entry resolves, without touching the network.
+      await client.connect(new StdioClientTransport({command:'fusion-jev',args:config.args.slice(2),
         env:{...process.env,PATH:resolve('node_modules/.bin')+delimiter+process.env.PATH,...config.env,FUSION_WORKSPACE_ROOT:process.cwd(),TYPESAFE_API_KEY:'',JEV_API_KEY:''}}));
       assert.deepEqual((await client.listTools()).tools.map(tool=>tool.name),['fusion_assist','fusion_inspect','fusion_evidence']);
       const result=await client.callTool({name:'fusion_inspect',arguments:{requests:[{action:'read',path:'package.json',maxLines:2}]}});
@@ -93,8 +95,8 @@ try {
       assert.equal(text.structuredContent.encoding,'utf8');
     } finally {await client.close();}
   `], consumer);
-  assert.match(run([join(consumer, 'node_modules/fusion-jev-mcp/dist/cli.js'), '--help'], consumer), /stdio/);
-  const consumerCli=join(consumer,'node_modules/fusion-jev-mcp/dist/cli.js');
+  assert.match(run([join(consumer, 'node_modules/fusion-jev/dist/cli.js'), '--help'], consumer), /stdio/);
+  const consumerCli=join(consumer,'node_modules/fusion-jev/dist/cli.js');
   assert.equal(JSON.parse(run([consumerCli,'doctor','stdio'],consumer)).providers.jev,'missing');
   assert.match(run([consumerCli,'setup','--dry-run'],consumer),/no files written/);
   assert.match(run([consumerCli,'setup'],consumer),/private provider template/);

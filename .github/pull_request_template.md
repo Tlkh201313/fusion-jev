@@ -1,5 +1,12 @@
-Describe the affected behavior and resulting change.
+## What and why
 
-Validation: failing regression observed, focused checks, full check and package smoke.
+<!-- Describe the behavior that changes and the reason. Link the issue if there is one. -->
 
-For output/performance changes: matched workload, compact bytes, expansion bytes, source recovery, latency and measurement limits.
+## Checklist
+
+- [ ] `npm run check` passes
+- [ ] `npm run pack:smoke` passes
+- [ ] Added or updated a regression test
+- [ ] Updated docs and `CHANGELOG.md` for user-visible changes
+- [ ] For output/performance changes: same workload before/after, compact bytes, expansion bytes, recovery check
+- [ ] No credentials, transcripts or private evidence included

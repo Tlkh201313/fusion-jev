@@ -7,3 +7,4 @@ dist/
 .superpowers/
 coverage/
 benchmark/results/live*.json
+internal/

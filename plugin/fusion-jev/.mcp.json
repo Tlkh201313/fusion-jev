@@ -1,8 +1,8 @@
 {
   "mcpServers": {
     "fusion": {
-      "command": "fusion-jev",
-      "args": ["stdio"],
+      "command": "npx",
+      "args": ["-y", "fusion-jev", "stdio"],
       "env_vars": ["TYPESAFE_API_KEY", "JEV_API_KEY", "FUSION_ENV_FILE", "FUSION_CATALOG_JSON", "FUSION_WORKSPACE_ROOT", "FUSION_WORKSPACE_ALLOWED_ROOTS", "NODE_OPTIONS"]
     }
   }

@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/Tlkh201313/fusion-jev/security/advisories/new
+    about: Use private vulnerability reporting. Do not post credentials or evidence contents in public issues.
+  - name: Read the docs
+    url: https://github.com/Tlkh201313/fusion-jev/tree/main/docs
+    about: Install guide, how it works, configuration and FAQ.

@@ -5,6 +5,9 @@
   "author": {
     "name": "Fusion contributors"
   },
+  "homepage": "https://github.com/Tlkh201313/fusion-jev",
+  "repository": "https://github.com/Tlkh201313/fusion-jev",
+  "license": "MIT",
   "interface": {
     "displayName": "Fusion Jev",
     "brandColor": "#142347",
