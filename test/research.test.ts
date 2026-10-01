@@ -319,7 +319,7 @@ process.stdout.write('READY\\n');
 const wait = new Int32Array(new SharedArrayBuffer(4));
 while (!existsSync(process.env.FUSION_TEST_GATE)) Atomics.wait(wait, 0, 0, 5);
 try { importResearch({ ...${JSON.stringify(article)}, passageId: process.env.FUSION_TEST_PASSAGE }, store); process.stdout.write('CAPTURED\\n'); }
-catch (error) { process.stdout.write(String(error).includes('expired or replaced') ? 'EVICTED\\n' : 'ERROR:' + String(error) + '\\n'); }
+catch (error) { process.stdout.write(String(error).includes('expired or replaced') ? 'EVICTED\\n' : String(error).includes('admission is full') ? 'REFUSED\\n' : 'ERROR:' + String(error) + '\\n'); }
 `;
   const launch = (passageId: string) => {
     const child = spawn(process.execPath, ['--import', 'tsx', '--input-type=module', '--eval', script], {
@@ -339,7 +339,8 @@ catch (error) { process.stdout.write(String(error).includes('expired or replaced
   await Promise.all([first.ready, second.ready]);
   await writeFile(gate, 'go');
   const outcomes = await Promise.all([first.done, second.done]);
-  assert.ok(outcomes.every(output => /CAPTURED|EVICTED/.test(output) && !output.includes('ERROR:')), outcomes.join('\n'));
+  // With one slot, a writer that overlaps the other's in-flight reservation is legitimately refused (bounded admission).
+  assert.ok(outcomes.every(output => /CAPTURED|EVICTED|REFUSED/.test(output) && !output.includes('ERROR:')), outcomes.join('\n'));
   assert.ok(outcomes.some(output => output.includes('CAPTURED')));
   const db = new Database(join(storageDir, 'research-provenance.sqlite'), { readonly: true });
   try {

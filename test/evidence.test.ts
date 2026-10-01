@@ -190,7 +190,8 @@ test('stale store cleanup preserves a different in-flight receipt file at the sa
   const current = second.capture({ source: command, bytes: Buffer.from('new') });
   const candidate = JSON.parse(await readFile(join(storageDir, `${current.id}.json`), 'utf8'));
   candidate.receipt.id = old.id;
-  await writeFile(join(storageDir, `${old.id}.json`), JSON.stringify(candidate));
+  // POSIX evidence files must be owner-only (0600) or they are discarded as unsafe; this one is a valid foreign receipt.
+  await writeFile(join(storageDir, `${old.id}.json`), JSON.stringify(candidate), { mode: 0o600 });
   assert.equal((await first.expand({ id: old.id })).status, 'missing');
   assert.ok((await readdir(storageDir)).includes(`${old.id}.json`));
 });

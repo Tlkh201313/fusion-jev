@@ -237,11 +237,18 @@ test('Fixed Git summarizes submodules without following an outside working tree 
   await symlink(outside, join(root, 'sub'), process.platform === 'win32' ? 'junction' : 'dir');
   await writeFile(join(outside, 'note.txt'), 'PRIVATE_OUTSIDE_SUBMODULE_FIXTURE\n');
   git(['config', 'diff.submodule', 'diff']);
-  const control = git(['diff', '--submodule=diff']);
-  if (process.platform === 'win32') assert.match(control, /PRIVATE_OUTSIDE_SUBMODULE_FIXTURE/, 'junction fixture permits inline Git traversal');
-  const result = await service.git('diff');
-  assert.doesNotMatch(result.text, /PRIVATE_OUTSIDE_SUBMODULE_FIXTURE/);
-  if (process.platform === 'win32') assert.match(result.text, /Subproject commit.*dirty/, 'submodule dirty summary remains visible');
+  // Newer Git refuses a symlinked submodule path outright (exit 128), older Git follows it, and Windows
+  // junctions are followed. The control only proves the fixture is hostile where Git still follows it.
+  const controlRun = spawnSync('git', ['diff', '--submodule=diff'], { cwd: root, encoding: 'utf8', windowsHide: true });
+  if (process.platform === 'win32') {
+    assert.equal(controlRun.status, 0, controlRun.stderr);
+    assert.match(controlRun.stdout, /PRIVATE_OUTSIDE_SUBMODULE_FIXTURE/, 'junction fixture permits inline Git traversal');
+  }
+  // Either the fixed Git summary succeeds or it is refused; no outside bytes may ever be returned.
+  const outcome = await service.git('diff').then(value => ({ text: value.text }), (error: unknown) => ({ text: '', error: String((error as Error)?.message ?? error) }));
+  assert.doesNotMatch(outcome.text + ('error' in outcome ? outcome.error : ''), /PRIVATE_OUTSIDE_SUBMODULE_FIXTURE/);
+  if ('error' in outcome) assert.notEqual(process.platform, 'win32', 'Windows must still produce the submodule summary');
+  else if (process.platform === 'win32') assert.match(outcome.text, /Subproject commit.*dirty/, 'submodule dirty summary remains visible');
 });
 
 for (const markerKind of ['file', 'junction']) test(`Fixed Git rejects a ${markerKind} marker pointing at unrelated private metadata`, async t => {

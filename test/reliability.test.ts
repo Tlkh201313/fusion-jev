@@ -67,7 +67,7 @@ test('compact commands surface diagnostics after the first page with exact locat
   t.after(() => rm(cache, { recursive: true, force: true }));
   const text = 'noise\n'.repeat(4000) + 'file.ts(3,4): error TS2345: expected string, received number\n';
   const command = spawnSync(process.execPath, ['--import', tsx, cli, 'run', '--', process.execPath,
-    '-e', `process.stderr.write(${JSON.stringify(text)}); process.exit(1)`], {
+    '-e', `process.stderr.write(${JSON.stringify(text)}); process.exitCode = 1`], {
     encoding: 'utf8', env: { ...process.env, LOCALAPPDATA: cache, XDG_CACHE_HOME: cache },
   });
   assert.equal(command.status, 1);
