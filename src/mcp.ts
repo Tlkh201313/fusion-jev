@@ -56,6 +56,22 @@ function prepareRequest(input: McpRequest, config: FusionConfig): RouteRequest {
   return prepared;
 }
 
+// Advertised schemas are what every host session pays for in context. Handlers still
+// validate with the full zod schemas, so drop only redundant generator output:
+// $schema URLs, regex patterns duplicated by a format, and safe-integer bounds.
+function compactSchema(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(compactSchema);
+  if (!value || typeof value !== 'object') return value;
+  const schema = value as Record<string, unknown>;
+  const compact: Record<string, unknown> = {};
+  for (const [key, child] of Object.entries(schema)) {
+    if (key === '$schema' || key === 'pattern' && typeof schema.format === 'string') continue;
+    if ((key === 'maximum' && child === Number.MAX_SAFE_INTEGER) || (key === 'minimum' && child === Number.MIN_SAFE_INTEGER)) continue;
+    compact[key] = compactSchema(child);
+  }
+  return compact;
+}
+
 function resultContent<T extends object>(result: T) {
   // Only decisions and accounting cross the MCP boundary; provider probability tables stay internal.
   const structuredContent = { ...result } as Record<string, unknown>;
@@ -619,7 +635,7 @@ export function createFusionMcpServer({ router, config, workspace, workspaceFact
       return {
       name, ...tool, securitySchemes,
       // Hosts reject top-level oneOf/anyOf/allOf, so advertise the flat schema; handlers parse the exact union.
-      inputSchema: z.toJSONSchema(tool.inputSchema) as { type: 'object'; [key: string]: unknown },
+      inputSchema: compactSchema(z.toJSONSchema(tool.inputSchema)) as { type: 'object'; [key: string]: unknown },
       };
     }),
   }));

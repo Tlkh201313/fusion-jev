@@ -58,6 +58,7 @@
     "benchmark:support": "tsx benchmark/support.ts",
     "benchmark:workflows": "tsx benchmark/workflows.ts",
     "benchmark:live": "node --env-file-if-exists=.env --import tsx examples/live.ts",
+    "overhead": "tsx benchmark/overhead.ts",
     "demo": "tsx examples/workflow.ts",
     "start": "node --env-file-if-exists=.env dist/cli.js stdio",
     "start:http": "node --env-file-if-exists=.env dist/cli.js http",

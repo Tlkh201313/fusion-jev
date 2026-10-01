@@ -14,12 +14,14 @@ import { prepareSetup } from './setup.js';
 import { fileURLToPath } from 'node:url';
 import { assertPrivatePath, preparePrivateDirectory } from './private-config.js';
 import { resolveUserConfigPath } from './config-path.js';
+import { formatGain, formatStatusline, gainLogPath, programName, readGain, recordGain } from './gain.js';
 
 const help = `Fusion Jev: local coding evidence and optional guarded choices
 
 Usage: fusion-jev [setup | stdio | http | doctor [stdio|http] | config doctor | --help] [--provider-env=ABSOLUTE_PATH]
        fusion-jev config env-file <ABSOLUTE_PATH | --clear>
        fusion-jev config auto-wrap <on | off | status>
+       fusion-jev gain | statusline
         fusion-jev run [--raw] [--timeout-ms=N] [--max-capture-bytes=N] [--cwd=ABSOLUTE_PATH] -- program argv...
         fusion-jev evidence ID [--start-byte=N] [--max-bytes=N] [--raw]
 
@@ -44,12 +46,16 @@ Source-checkout npm scripts load .env; the global fusion-jev command does not lo
 Provider keys are never returned to clients. See README.md and .env.example.
 `;
 
-function evidenceStore(): EvidenceStore {
+function cacheBase(): string {
   // XDG: an empty variable means unset.
   const base = process.platform === 'win32' ? process.env.LOCALAPPDATA :
     process.env.XDG_CACHE_HOME || join(homedir(), '.cache');
   if (!base || !isAbsolute(base)) throw new Error('Fusion evidence cache directory must be absolute');
-  return new EvidenceStore({ storageDir: join(base, 'fusion-jev-mcp', 'evidence') });
+  return base;
+}
+
+function evidenceStore(): EvidenceStore {
+  return new EvidenceStore({ storageDir: join(cacheBase(), 'fusion-jev-mcp', 'evidence') });
 }
 
 function positiveInteger(value: string, label: string, minimum = 1): number {
@@ -94,12 +100,17 @@ async function runCli(args: string[]): Promise<void> {
       const captured = result.evidence ?? store;
       const stdout = await summarizeChannel(captured, result.stdout);
       const stderr = await summarizeChannel(captured, result.stderr);
-      if (result.evidenceUnavailable) process.stderr.write('Fusion evidence storage failed; receipts below are not recoverable from another process.\n');
-      process.stdout.write(`termination=${result.termination} exitCode=${result.exitCode ?? 'null'} stdout=${result.stdout.id} stdoutTruncated=${result.stdout.truncated} stdoutRedacted=${result.stdout.redacted} stdoutStoredBytes=${result.stdout.storedBytes} stdoutOriginalBytes=${result.stdout.originalBytes ?? 'null'} stderr=${result.stderr.id} stderrTruncated=${result.stderr.truncated} stderrRedacted=${result.stderr.redacted} stderrStoredBytes=${result.stderr.storedBytes} stderrOriginalBytes=${result.stderr.originalBytes ?? 'null'} durationMs=${Math.round(result.durationMs)} cleanupFailed=${Boolean(result.cleanupFailed)}\n`);
-      process.stdout.write(renderChannelSummary(stdout));
-      process.stderr.write(renderChannelSummary(stderr));
-      process.stdout.write(`recoverStdout=fusion-jev evidence ${result.stdout.id} --raw\nrecoverStderr=fusion-jev evidence ${result.stderr.id} --raw\n`);
-      process.stdout.write(`recoverStdoutArgv=${JSON.stringify([process.execPath, fileURLToPath(import.meta.url), 'evidence', result.stdout.id, '--raw'])}\nrecoverStderrArgv=${JSON.stringify([process.execPath, fileURLToPath(import.meta.url), 'evidence', result.stderr.id, '--raw'])}\n`);
+      let shown = 0;
+      const show = (stream: NodeJS.WriteStream, text: string) => { shown += Buffer.byteLength(text); stream.write(text); };
+      if (result.evidenceUnavailable) show(process.stderr, 'Fusion evidence storage failed; receipts below are not recoverable from another process.\n');
+      show(process.stdout, `termination=${result.termination} exitCode=${result.exitCode ?? 'null'} stdout=${result.stdout.id} stdoutTruncated=${result.stdout.truncated} stdoutRedacted=${result.stdout.redacted} stdoutStoredBytes=${result.stdout.storedBytes} stdoutOriginalBytes=${result.stdout.originalBytes ?? 'null'} stderr=${result.stderr.id} stderrTruncated=${result.stderr.truncated} stderrRedacted=${result.stderr.redacted} stderrStoredBytes=${result.stderr.storedBytes} stderrOriginalBytes=${result.stderr.originalBytes ?? 'null'} durationMs=${Math.round(result.durationMs)} cleanupFailed=${Boolean(result.cleanupFailed)}\n`);
+      show(process.stdout, renderChannelSummary(stdout));
+      show(process.stderr, renderChannelSummary(stderr));
+      show(process.stdout, `recoverStdout=fusion-jev evidence ${result.stdout.id} --raw\nrecoverStderr=fusion-jev evidence ${result.stderr.id} --raw\n`);
+      show(process.stdout, `recoverStdoutArgv=${JSON.stringify([process.execPath, fileURLToPath(import.meta.url), 'evidence', result.stdout.id, '--raw'])}\nrecoverStderrArgv=${JSON.stringify([process.execPath, fileURLToPath(import.meta.url), 'evidence', result.stderr.id, '--raw'])}\n`);
+      const capturedBytes = (receipt: typeof result.stdout) => receipt.originalBytes ?? receipt.storedBytes;
+      recordGain(gainLogPath(cacheBase()), { t: Date.now(), program: programName(argv[0]),
+        capturedBytes: capturedBytes(result.stdout) + capturedBytes(result.stderr), shownBytes: shown, exitCode: result.exitCode });
     }
     const signalExit = (name: unknown, fallback: number) => {
       const number = typeof name === 'string' ? (osConstants.signals as Record<string, number | undefined>)[name] : undefined;
@@ -211,6 +222,13 @@ function configureAutoWrap(mode: 'on' | 'off' | 'status'): void {
 async function main(): Promise<void> {
   if (process.argv[2] === 'run') { await runCli(process.argv.slice(3)); return; }
   if (process.argv[2] === 'evidence') { await evidenceCli(process.argv.slice(3)); return; }
+  if (process.argv[2] === 'gain') { process.stdout.write(formatGain(readGain(gainLogPath(cacheBase())))); return; }
+  if (process.argv[2] === 'statusline') {
+    let line = 'fusion';
+    try { line = formatStatusline(readGain(gainLogPath(cacheBase()))); } catch { /* A status line never fails. */ }
+    process.stdout.write(line + '\n');
+    return;
+  }
   const args = process.argv.slice(2).filter(arg => !arg.startsWith('--provider-env='));
   const envFileArgs = process.argv.slice(2).filter(arg => arg.startsWith('--provider-env='));
   if (envFileArgs.length > 1) throw new Error('Specify --env-file only once');
