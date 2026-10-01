@@ -532,14 +532,11 @@ test('fusion_evidence import and get expose exact bytes, bounded preview and str
   }
   const advertised = descriptor.inputSchema as any;
   assert.equal(advertised.type, 'object');
-  assert.ok(Array.isArray(advertised.oneOf));
-  assert.equal(advertised.oneOf.length, 2);
-  const getBranch = advertised.oneOf.find((branch: any) => branch.properties?.action?.const === 'get');
-  const importBranch = advertised.oneOf.find((branch: any) => branch.properties?.action?.const === 'import');
-  assert.ok(getBranch?.required.includes('id'));
-  assert.ok(importBranch?.required.includes('passage'));
-  assert.equal(getBranch.additionalProperties, false);
-  assert.equal(importBranch.additionalProperties, false);
+  // Claude and Codex reject combinators at the top level of a tool input schema.
+  for (const keyword of ['oneOf', 'anyOf', 'allOf']) assert.equal(advertised[keyword], undefined);
+  assert.deepEqual(advertised.properties.action.enum, ['get', 'import']);
+  assert.ok(advertised.properties.id && advertised.properties.passage);
+  assert.equal(advertised.additionalProperties, false);
 });
 
 test('HTTP sessions share research receipts and assist treats hostile text as data', async t => {

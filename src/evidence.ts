@@ -4,6 +4,7 @@ import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSy
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import Database from 'better-sqlite3';
 import { safeWorkspaceBytes } from './workspace.js';
+import { isSecretName, redactSecrets } from './secrets.js';
 
 export type EvidenceSource =
   | { kind: 'workspace'; root: string; path: string }
@@ -24,7 +25,7 @@ const MAX_CAPTURE = 8 * 1024 * 1024;
 const MAX_PAGE = 64 * 1024;
 const DEFAULT_PAGE = 16 * 1024;
 const MAX_DISK_FILE = 12 * 1024 * 1024;
-const EXCLUDED = new Set(['.git', 'node_modules', 'dist', '.next', '.ssh', '.aws', '.azure', '.gnupg', '.codex', '.npmrc']);
+const EXCLUDED = new Set(['.git', 'node_modules', 'dist', '.next']);
 const hash = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
 type ResearchSource = Extract<EvidenceSource, { kind: 'research' }>;
 function sameResearchSource(left: ResearchSource, right: ResearchSource): boolean {
@@ -127,17 +128,13 @@ if ($isDirectory) {
 function redactKnownSecrets(input: Buffer): { bytes: Buffer; redacted: boolean } {
   // Decode with replacement for pattern detection. If nothing matches, return the untouched raw bytes.
   const text = new TextDecoder('utf-8').decode(input);
-  const safe = text
-    .replace(/^(\s*(?:TYPESAFE_API_KEY|JEV_API_KEY|TEAMOROUTER_API_KEY|OPENAI_API_KEY|FUSION_HTTP_BEARER_TOKEN)\s*=\s*)[^\r\n]+/gim, '$1[REDACTED]')
-    .replace(/^(\s*Authorization\s*:\s*Bearer\s+)\S+/gim, '$1[REDACTED]')
-    .replace(/("(?:TYPESAFE_API_KEY|JEV_API_KEY|TEAMOROUTER_API_KEY|OPENAI_API_KEY|FUSION_HTTP_BEARER_TOKEN)"\s*[:=]\s*")(?:\\.|[^"\\])*(")/gi, '$1[REDACTED]$2')
-    .replace(/('(?:TYPESAFE_API_KEY|JEV_API_KEY|TEAMOROUTER_API_KEY|OPENAI_API_KEY|FUSION_HTTP_BEARER_TOKEN)'\s*[:=]\s*')(?:\\.|[^'\\])*(')/gi, '$1[REDACTED]$2');
+  const safe = redactSecrets(text);
   return { bytes: safe === text ? input : Buffer.from(safe), redacted: safe !== text };
 }
 
 function canonicalWorkspace(root: string, path: string): string {
   if (!path || isAbsolute(path) || path.includes('\0') || path.split(/[\\/]/).some(part => {
-    const lower = part.toLowerCase(); return EXCLUDED.has(lower) || lower === '.env' || lower.startsWith('.env.');
+    return EXCLUDED.has(part.toLowerCase()) || isSecretName(part);
   })) throw new Error('Invalid workspace path');
   const canonicalRoot = realpathSync(root);
   const candidate = resolve(canonicalRoot, path);
@@ -145,7 +142,7 @@ function canonicalWorkspace(root: string, path: string): string {
   const actual = realpathSync(candidate);
   if (actual !== canonicalRoot && !actual.startsWith(canonicalRoot + sep)) throw new Error('Invalid workspace path');
   if (relative(canonicalRoot, actual).split(/[\\/]/).some(part => {
-    const lower = part.toLowerCase(); return EXCLUDED.has(lower) || lower === '.env' || lower.startsWith('.env.');
+    return EXCLUDED.has(part.toLowerCase()) || isSecretName(part);
   })) throw new Error('Invalid workspace path');
   return actual;
 }

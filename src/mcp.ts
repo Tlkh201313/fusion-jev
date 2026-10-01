@@ -2,7 +2,7 @@ import { createServer, type IncomingMessage, type ServerResponse, type Server as
 import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { isAbsolute, resolve } from 'node:path';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer, type RegisteredTool } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
 import { ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
@@ -287,6 +287,14 @@ export function createFusionMcpServer({ router, config, workspace, workspaceFact
   const server = new McpServer({ name: 'fusion-jev', title: 'Fusion Jev', version: '0.3.0' }, {
     instructions: `Prefer Fusion for supported inspection: assist for short tasks, inspect for known operations, evidence for expansion. Jev selects validated IDs only. Host owns reasoning, edits, command authorization and correctness. Run chosen commands through fusion-jev run -- program argv... by default (--raw for small exact output). Escalate here; RTK/native tools are fallback. ${hasWorkspace ? workspaceHint : 'No workspace is exposed.'}`.trim(),
   });
+  // Profiles must restrict tools/call as well as tools/list: hidden tools are removed at registration.
+  const exposed = new Set(mcpToolNames(config.mcpProfile, hasWorkspace));
+  const registerTool = server.registerTool.bind(server) as (...args: unknown[]) => RegisteredTool;
+  server.registerTool = ((name: string, ...rest: unknown[]) => {
+    const tool = registerTool(name, ...rest);
+    if (!exposed.has(name)) tool.remove();
+    return tool;
+  }) as typeof server.registerTool;
   const securitySchemes = config.http.oauth ? [{ type: 'oauth2', scopes: config.http.oauth.scopes }] : [{ type: 'noauth' }];
   const common = { annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true }, _meta: { securitySchemes } };
   const workspaceCommon = { ...common, annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false } };
@@ -391,7 +399,7 @@ export function createFusionMcpServer({ router, config, workspace, workspaceFact
   const evidenceDescriptor = { ...common,
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     title: 'Import or retrieve exact evidence',
-    description: 'Retrieve exact bytes or import attributed host research as untrusted evidence. No URL fetching.',
+    description: 'Retrieve exact bytes (get: id) or import attributed host research as untrusted evidence (import: url, retrievedAt, passageId, passage, sourceTool). No URL fetching.',
     inputSchema: z.strictObject({ action: z.enum(['get', 'import']), id: z.uuid().optional(),
       startByte: z.number().int().min(0).optional(), maxBytes: z.number().int().min(1).max(64 * 1024).optional(),
       expectedSha256: z.string().regex(/^[a-f0-9]{64}$/).optional(),
@@ -605,9 +613,8 @@ export function createFusionMcpServer({ router, config, workspace, workspaceFact
       const tool = descriptors.get(name)!;
       return {
       name, ...tool, securitySchemes,
-      inputSchema: name === 'fusion_evidence'
-        ? { type: 'object' as const, oneOf: evidenceSchema.options.map(option => z.toJSONSchema(option)) }
-        : z.toJSONSchema(tool.inputSchema) as { type: 'object'; [key: string]: unknown },
+      // Hosts reject top-level oneOf/anyOf/allOf, so advertise the flat schema; handlers parse the exact union.
+      inputSchema: z.toJSONSchema(tool.inputSchema) as { type: 'object'; [key: string]: unknown },
       };
     }),
   }));
