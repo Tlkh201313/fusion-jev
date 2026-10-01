@@ -298,7 +298,7 @@ export class EvidenceStore {
       }
     }
     this.entries.set(receipt.id, entry);
-    if (!this.storageDir) this.enforceCapacity();
+    if (!this.storageDir) this.enforceCapacity(); else this.trimMemoryCache();
     return structuredClone(receipt);
   }
 
@@ -710,7 +710,7 @@ export class EvidenceStore {
       this.validateReceiptRow(row);
       if (row.expiresAt <= this.clock()) { this.delete(input.id); return { status: 'expired', id: input.id }; }
       if (!entry || entry.receipt.sha256 !== row.sha256 || entry.receipt.expiresAt !== row.expiresAt) {
-        try { entry = this.readDiskEntry(input.id, row); this.entries.set(input.id, entry); }
+        try { entry = this.readDiskEntry(input.id, row); this.entries.set(input.id, entry); this.trimMemoryCache(); }
         catch { this.delete(input.id); return { status: 'missing', id: input.id }; }
       }
     }
@@ -745,6 +745,23 @@ export class EvidenceStore {
       this.removeReceiptFiles([id]);
     }
     this.entries.delete(id);
+  }
+
+  // Disk mode: the receipts index is authoritative and expand() rereads files, so memory
+  // is only a cache. Bound it so a long-lived server cannot keep buffers for receipts
+  // that other processes already evicted.
+  private trimMemoryCache(): void {
+    const now = this.clock();
+    let total = 0;
+    for (const [id, entry] of this.entries) {
+      if (entry.receipt.expiresAt <= now) this.entries.delete(id);
+      else total += entry.bytes.length;
+    }
+    for (const [id, entry] of this.entries) {
+      if (this.entries.size <= this.maxEntries && total <= this.maxTotalBytes) break;
+      this.entries.delete(id);
+      total -= entry.bytes.length;
+    }
   }
 
   private enforceCapacity(): void {

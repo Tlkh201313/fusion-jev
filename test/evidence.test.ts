@@ -486,3 +486,17 @@ test('repairing a previously shared Windows cache discards all old receipts', as
   assert.equal(await readFile(outside, 'utf8'), 'must survive');
   assert.deepEqual((await readdir(storageDir)).filter(name => name.endsWith('.json')), []);
 });
+
+test('a long-lived disk store keeps a bounded in-memory cache', async t => {
+  const storageDir = await mkdtemp(join(tmpdir(), 'fusion-memory-bound-'));
+  t.after(() => rm(storageDir, { recursive: true, force: true }));
+  const server = new EvidenceStore({ storageDir, maxEntries: 2 });
+  const other = new EvidenceStore({ storageDir, maxEntries: 2 });
+  const ids = [];
+  for (let index = 0; index < 6; index++) {
+    ids.push(server.capture({ source: command, bytes: Buffer.from(`server ${index}`) }).id);
+    other.capture({ source: command, bytes: Buffer.from(`other ${index}`) });
+  }
+  assert.ok((server as unknown as { entries: Map<string, unknown> }).entries.size <= 2);
+  assert.equal((await server.expand({ id: ids[0]! })).status, 'missing');
+});
