@@ -12,6 +12,8 @@ export interface RunResult {
   exitCode: number | null; signal?: string; errorCode?: 'not_found' | 'access_denied' | 'launch_failed';
   cleanupFailed?: boolean;
   stdout: EvidenceReceipt; stderr: EvidenceReceipt; durationMs: number;
+  /** Set when persistent evidence storage failed; receipts then live only in this store. */
+  evidence?: EvidenceStore; evidenceUnavailable?: true;
 }
 
 const MAX_CAPTURE = 8 * 1024 * 1024;
@@ -174,11 +176,23 @@ function errorCode(error: Error): RunResult['errorCode'] {
   return code === 'ENOENT' ? 'not_found' : code === 'EACCES' || code === 'EPERM' ? 'access_denied' : 'launch_failed';
 }
 
+// After the direct child exits, wait this long for descendants to release the
+// output pipes before reporting the child's own status (no timeout configured).
+const PIPE_GRACE_MS = 1500;
+// POSIX processes first receive the forwarded signal so they can clean up
+// (for example Git lock files); survivors are killed after this grace period.
+const SIGNAL_GRACE_MS = 2000;
+
+function forwardedSignal(signal: AbortSignal | undefined): NodeJS.Signals {
+  const reason: unknown = signal?.reason;
+  return typeof reason === 'string' && /^SIG[A-Z0-9]+$/.test(reason) ? reason as NodeJS.Signals : 'SIGTERM';
+}
+
 export async function runCommand(input: RunInput, evidence: EvidenceStore, signal?: AbortSignal): Promise<RunResult> {
   if (!Array.isArray(input.argv) || !input.argv.length || input.argv.some(arg => typeof arg !== 'string') || !input.argv[0])
     throw new TypeError('Command argv must include a program');
   if (input.cwd !== undefined && !isAbsolute(input.cwd)) throw new TypeError('Command cwd must be absolute');
-  if (input.timeoutMs !== undefined && (!Number.isSafeInteger(input.timeoutMs) || input.timeoutMs < 1))
+  if (input.timeoutMs !== undefined && (!Number.isSafeInteger(input.timeoutMs) || input.timeoutMs < 1 || input.timeoutMs > 2_147_483_647))
     throw new RangeError('Invalid command timeout');
   const maxCaptureBytes = input.maxCaptureBytes ?? MAX_CAPTURE;
   if (!Number.isSafeInteger(maxCaptureBytes) || maxCaptureBytes < 1 || maxCaptureBytes > MAX_CAPTURE)
@@ -188,7 +202,15 @@ export async function runCommand(input: RunInput, evidence: EvidenceStore, signa
   const chunks: Record<'stdout' | 'stderr', Buffer[]> = { stdout: [], stderr: [] };
   const sizes = { stdout: 0, stderr: 0 };
   const originals = { stdout: 0, stderr: 0 };
-  const pendingDrains = new Set<Promise<void>>();
+  const pendingDrains = new Map<Promise<void>, () => void>();
+  const brokenSinks = new Set<NodeJS.WriteStream>();
+  // A closed reader (for example `| head`) must not crash the wrapper or change the child's status.
+  const onSinkError = (sink: NodeJS.WriteStream) => () => {
+    brokenSinks.add(sink);
+    for (const release of pendingDrains.values()) release();
+  };
+  const sinkHandlers = input.raw ? ([process.stdout, process.stderr] as const).map(sink => [sink, onSinkError(sink)] as const) : [];
+  for (const [sink, handler] of sinkHandlers) sink.on('error', handler);
   const capture = (channel: 'stdout' | 'stderr', chunk: Buffer, source: Readable) => {
     originals[channel] += chunk.length;
     const remaining = maxCaptureBytes - sizes[channel];
@@ -199,21 +221,34 @@ export async function runCommand(input: RunInput, evidence: EvidenceStore, signa
     }
     if (input.raw) {
       const sink = channel === 'stdout' ? process.stdout : process.stderr;
+      if (brokenSinks.has(sink)) return;
       if (!sink.write(chunk)) {
         source.pause();
-        const drained = new Promise<void>(resolve => sink.once('drain', () => { source.resume(); resolve(); }));
-        pendingDrains.add(drained);
+        let release!: () => void;
+        const drained = new Promise<void>(resolve => {
+          release = () => { sink.removeListener('drain', release); source.resume(); resolve(); };
+          sink.once('drain', release);
+        });
+        pendingDrains.set(drained, release);
         void drained.then(() => pendingDrains.delete(drained));
       }
     }
   };
   const finish = (fields: Pick<RunResult, 'termination' | 'exitCode' | 'signal' | 'errorCode' | 'cleanupFailed'>, incomplete = false): RunResult => {
+    for (const [sink, handler] of sinkHandlers) sink.removeListener('error', handler);
     const source = (channel: 'stdout' | 'stderr') => ({ kind: 'command' as const, cwd, argv: [...input.argv], channel });
-    const stdout = evidence.capture({ source: source('stdout'), bytes: Buffer.concat(chunks.stdout), originalBytes: incomplete ? null : originals.stdout,
-      truncated: incomplete || originals.stdout > sizes.stdout });
-    const stderr = evidence.capture({ source: source('stderr'), bytes: Buffer.concat(chunks.stderr), originalBytes: incomplete ? null : originals.stderr,
-      truncated: incomplete || originals.stderr > sizes.stderr });
-    return { ...fields, stdout, stderr, durationMs: performance.now() - started };
+    const receipts = (store: EvidenceStore) => ({
+      stdout: store.capture({ source: source('stdout'), bytes: Buffer.concat(chunks.stdout), originalBytes: incomplete ? null : originals.stdout,
+        truncated: incomplete || originals.stdout > sizes.stdout }),
+      stderr: store.capture({ source: source('stderr'), bytes: Buffer.concat(chunks.stderr), originalBytes: incomplete ? null : originals.stderr,
+        truncated: incomplete || originals.stderr > sizes.stderr }),
+    });
+    try { return { ...fields, ...receipts(evidence), durationMs: performance.now() - started }; }
+    catch {
+      // Persistent storage failed (disk full, permissions): keep the child's status and an in-process copy.
+      const fallback = new EvidenceStore();
+      return { ...fields, ...receipts(fallback), evidence: fallback, evidenceUnavailable: true, durationMs: performance.now() - started };
+    }
   };
   if (signal?.aborted) return finish({ termination: 'cancelled', exitCode: null });
 
@@ -235,9 +270,9 @@ export async function runCommand(input: RunInput, evidence: EvidenceStore, signa
       return;
     }
     let exitObserved = false;
-    child.once('exit', () => { exitObserved = true; });
+    let exited: { code: number | null; signal: NodeJS.Signals | null } | undefined;
     const rootIsLive = () => canTrustWindowsRoot(child, exitObserved);
-    const identitySnapshot = process.platform === 'win32' && (input.timeoutMs !== undefined || signal !== undefined) && child.pid && rootIsLive()
+    const takeSnapshot = () => process.platform === 'win32' && child.pid && rootIsLive()
       ? captureWindowsIdentity(() => snapshotWindowsTree(child.pid!), rootIsLive).then(async first => {
         if (!first) return undefined;
         // One later snapshot records descendants spawned just after the root.
@@ -254,34 +289,53 @@ export async function runCommand(input: RunInput, evidence: EvidenceStore, signa
         return [...merged.values()];
       })
       : Promise.resolve(undefined);
+    // A timeout needs the early snapshot to reach descendants after the root exits.
+    // Plain runs snapshot only when cancellation actually happens.
+    let identitySnapshot: Promise<WindowsIdentity[] | undefined> | undefined = input.timeoutMs !== undefined ? takeSnapshot() : undefined;
     let reason: 'timeout' | 'cancelled' | undefined;
     let launchedError: Error | undefined;
     let cleanupFailed = false;
     let cleanup: Promise<boolean> | undefined;
+    let escalate: (() => void) | undefined;
     let forced: ReturnType<typeof setTimeout> | undefined;
+    let graceTimer: ReturnType<typeof setTimeout> | undefined;
+    let pipeTimer: ReturnType<typeof setTimeout> | undefined;
     let settled = false;
     const settle = (fields: Pick<RunResult, 'termination' | 'exitCode' | 'signal' | 'errorCode' | 'cleanupFailed'>, incomplete = false) => {
       if (settled) return;
       settled = true;
-      if (timer) clearTimeout(timer);
-      if (forced) clearTimeout(forced);
+      for (const pending of [timer, forced, graceTimer, pipeTimer]) if (pending) clearTimeout(pending);
       signal?.removeEventListener('abort', onAbort);
       try { resolve(finish(fields, incomplete)); } catch (error) { reject(error); }
     };
     const stop = (why: 'timeout' | 'cancelled') => {
       if (reason || launchedError) return;
       reason = why;
-      cleanup = killTree(child, identitySnapshot, rootIsLive).then(ok => {
-        if (!ok) {
-          cleanupFailed = true;
-          try { child.kill('SIGKILL'); } catch { /* The direct child may already have exited. */ }
-        }
-        return ok;
-      });
+      const kill = () => {
+        escalate = undefined;
+        if (graceTimer) clearTimeout(graceTimer);
+        identitySnapshot ??= takeSnapshot();
+        cleanup = killTree(child, identitySnapshot, rootIsLive).then(ok => {
+          if (!ok) {
+            cleanupFailed = true;
+            try { child.kill('SIGKILL'); } catch { /* The direct child may already have exited. */ }
+          }
+          return ok;
+        });
+      };
+      let grace = 0;
+      if (process.platform !== 'win32' && child.pid) {
+        try {
+          process.kill(-child.pid, why === 'cancelled' ? forwardedSignal(signal) : 'SIGTERM');
+          grace = SIGNAL_GRACE_MS;
+          escalate = kill;
+          graceTimer = setTimeout(kill, grace);
+        } catch { kill(); }
+      } else kill();
       forced = setTimeout(() => {
         child.stdout?.destroy(); child.stderr?.destroy();
-        settle({ termination: why, exitCode: null, cleanupFailed: true }, true);
-      }, 4500);
+        settle({ termination: why, exitCode: exited?.code ?? null, cleanupFailed: true }, true);
+      }, grace + 4500);
     };
     const onAbort = () => stop('cancelled');
     signal?.addEventListener('abort', onAbort, { once: true });
@@ -289,11 +343,25 @@ export async function runCommand(input: RunInput, evidence: EvidenceStore, signa
     child.stdout?.on('data', (chunk: Buffer) => capture('stdout', chunk, child.stdout!));
     child.stderr?.on('data', (chunk: Buffer) => capture('stderr', chunk, child.stderr!));
     child.once('error', error => { launchedError = error; });
+    child.once('exit', (code, endedSignal) => {
+      exitObserved = true;
+      exited = { code, signal: endedSignal };
+      // Descendants (test workers, `server &`) can hold the pipes open indefinitely.
+      // Without a timeout, report the child's own status once it exits.
+      if (input.timeoutMs !== undefined || reason) return;
+      pipeTimer = setTimeout(() => {
+        child.stdout?.destroy(); child.stderr?.destroy();
+        for (const release of pendingDrains.values()) release();
+        settle(endedSignal ? { termination: 'signal', exitCode: null, signal: endedSignal } : { termination: 'exit', exitCode: code }, true);
+      }, PIPE_GRACE_MS);
+    });
     child.once('close', async (code, endedSignal) => {
+      // Everything released the pipes; finish any pending group kill immediately.
+      escalate?.();
       if (cleanup) await cleanup;
-      await Promise.all([...pendingDrains]);
+      await Promise.all([...pendingDrains.keys()]);
       if (launchedError) settle({ termination: 'spawn_error', exitCode: null, errorCode: errorCode(launchedError) });
-      else if (reason) settle({ termination: reason, exitCode: null, ...(endedSignal ? { signal: endedSignal } : {}), ...(cleanupFailed ? { cleanupFailed: true } : {}) });
+      else if (reason) settle({ termination: reason, exitCode: exited?.code ?? null, ...(endedSignal ? { signal: endedSignal } : {}), ...(cleanupFailed ? { cleanupFailed: true } : {}) });
       else if (endedSignal) settle({ termination: 'signal', exitCode: null, signal: endedSignal });
       else settle({ termination: 'exit', exitCode: code });
     });

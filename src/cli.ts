@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { delimiter, dirname, isAbsolute, join } from 'node:path';
 import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { homedir, constants as osConstants } from 'node:os';
 import { loadConfig } from './config.js';
 import { FusionRouter } from './router.js';
 import { JevProvider } from './providers/jev.js';
@@ -44,8 +44,9 @@ Provider keys are never returned to clients. See README.md and .env.example.
 `;
 
 function evidenceStore(): EvidenceStore {
+  // XDG: an empty variable means unset.
   const base = process.platform === 'win32' ? process.env.LOCALAPPDATA :
-    process.env.XDG_CACHE_HOME ?? join(homedir(), '.cache');
+    process.env.XDG_CACHE_HOME || join(homedir(), '.cache');
   if (!base || !isAbsolute(base)) throw new Error('Fusion evidence cache directory must be absolute');
   return new EvidenceStore({ storageDir: join(base, 'fusion-jev-mcp', 'evidence') });
 }
@@ -66,7 +67,10 @@ async function runCli(args: string[]): Promise<void> {
   let cwd: string | undefined;
   for (const option of args.slice(0, separator)) {
     if (option === '--raw') raw = true;
-    else if (option.startsWith('--timeout-ms=')) timeoutMs = positiveInteger(option.slice(13), 'timeout-ms');
+    else if (option.startsWith('--timeout-ms=')) {
+      timeoutMs = positiveInteger(option.slice(13), 'timeout-ms');
+      if (timeoutMs > 2_147_483_647) throw new Error('Invalid timeout-ms');
+    }
     else if (option.startsWith('--max-capture-bytes=')) maxCaptureBytes = positiveInteger(option.slice(20), 'max-capture-bytes');
     else if (option.startsWith('--cwd=')) {
       cwd = option.slice(6);
@@ -79,24 +83,32 @@ async function runCli(args: string[]): Promise<void> {
   // Do not pay for persistent evidence initialization or write unreachable captures.
   const store = raw ? new EvidenceStore() : evidenceStore();
   const controller = new AbortController();
-  const cancel = () => controller.abort();
-  process.once('SIGINT', cancel); process.once('SIGTERM', cancel);
+  // Forward the received signal so the command can clean up before any forced kill.
+  const cancel = (received: NodeJS.Signals) => controller.abort(received);
+  const forwarded: NodeJS.Signals[] = process.platform === 'win32' ? ['SIGINT', 'SIGTERM'] : ['SIGINT', 'SIGTERM', 'SIGHUP', 'SIGQUIT'];
+  for (const name of forwarded) process.once(name, cancel);
   try {
     const result = await runCommand({ argv, cwd, timeoutMs, maxCaptureBytes, raw }, store, controller.signal);
     if (!raw) {
-      const stdout = await summarizeChannel(store, result.stdout);
-      const stderr = await summarizeChannel(store, result.stderr);
+      const captured = result.evidence ?? store;
+      const stdout = await summarizeChannel(captured, result.stdout);
+      const stderr = await summarizeChannel(captured, result.stderr);
+      if (result.evidenceUnavailable) process.stderr.write('Fusion evidence storage failed; receipts below are not recoverable from another process.\n');
       process.stdout.write(`termination=${result.termination} exitCode=${result.exitCode ?? 'null'} stdout=${result.stdout.id} stdoutTruncated=${result.stdout.truncated} stdoutRedacted=${result.stdout.redacted} stdoutStoredBytes=${result.stdout.storedBytes} stdoutOriginalBytes=${result.stdout.originalBytes ?? 'null'} stderr=${result.stderr.id} stderrTruncated=${result.stderr.truncated} stderrRedacted=${result.stderr.redacted} stderrStoredBytes=${result.stderr.storedBytes} stderrOriginalBytes=${result.stderr.originalBytes ?? 'null'} durationMs=${Math.round(result.durationMs)} cleanupFailed=${Boolean(result.cleanupFailed)}\n`);
       process.stdout.write(renderChannelSummary(stdout));
       process.stderr.write(renderChannelSummary(stderr));
       process.stdout.write(`recoverStdout=fusion-jev evidence ${result.stdout.id} --raw\nrecoverStderr=fusion-jev evidence ${result.stderr.id} --raw\n`);
       process.stdout.write(`recoverStdoutArgv=${JSON.stringify([process.execPath, fileURLToPath(import.meta.url), 'evidence', result.stdout.id, '--raw'])}\nrecoverStderrArgv=${JSON.stringify([process.execPath, fileURLToPath(import.meta.url), 'evidence', result.stderr.id, '--raw'])}\n`);
     }
+    const signalExit = (name: unknown, fallback: number) => {
+      const number = typeof name === 'string' ? (osConstants.signals as Record<string, number | undefined>)[name] : undefined;
+      return number ? 128 + number : fallback;
+    };
     process.exitCode = result.termination === 'exit' ? result.exitCode ?? 1 :
-      result.termination === 'timeout' ? 124 : result.termination === 'cancelled' ? 130 :
-      result.termination === 'spawn_error' ? 127 : 128;
+      result.termination === 'timeout' ? 124 : result.termination === 'cancelled' ? signalExit(controller.signal.reason, 130) :
+      result.termination === 'spawn_error' ? 127 : signalExit(result.signal, 128);
   } finally {
-    process.removeListener('SIGINT', cancel); process.removeListener('SIGTERM', cancel);
+    for (const name of forwarded) process.removeListener(name, cancel);
   }
 }
 

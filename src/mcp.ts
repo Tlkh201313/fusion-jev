@@ -431,10 +431,15 @@ export function createFusionMcpServer({ router, config, workspace, workspaceFact
           return resultContent({ ...page, encoding: 'base64', utf8Unavailable: 'Range contains binary bytes or splits a UTF-8 sequence; use exact base64 or choose a complete text range.' });
         }
       }
-      let preview: string | undefined;
-      try { preview = new TextDecoder('utf-8', { fatal: true }).decode(Buffer.from(page.dataBase64, 'base64')).slice(0, 200); }
+      let text: string | undefined;
+      try { text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(Buffer.from(page.dataBase64, 'base64')); }
       catch { /* A byte range can split a UTF-8 sequence; exact base64 remains available. */ }
-      return resultContent({ ...page, ...(preview === undefined ? {} : { preview }) });
+      const structured = { ...page, ...(text === undefined ? {} : { preview: text.slice(0, 200) }) };
+      if (text === undefined) return resultContent(structured);
+      // Exact base64 stays in structuredContent for programmatic clients; the model reads
+      // the decoded text once instead of an opaque copy that costs about a third more tokens.
+      const { dataBase64: _bytes, preview: _preview, ...metadata } = structured;
+      return { content: [{ type: 'text' as const, text: `${JSON.stringify(metadata)}\n${text}` }], structuredContent: structured };
     } catch {
       return { isError: true, content: [{ type: 'text' as const, text: 'Invalid evidence import or byte range.' }],
         structuredContent: { error: { code: 'INVALID_EVIDENCE', message: 'Invalid evidence import or byte range.' } } };
