@@ -15,6 +15,7 @@ Only `TYPESAFE_API_KEY` is needed, and only for optional live Jev choices. Comma
 The CLI loads a trusted private env file from, in order: `--provider-env=ABSOLUTE_PATH`, `FUSION_ENV_FILE`, then the saved per-user path. Process environment values take precedence over file entries. Fusion never searches the working directory for a `.env`; source-checkout npm scripts may load the checkout's `.env`, so keep it git-ignored.
 
 ```sh
+# Without a global install, prefix each command with: npx -y
 fusion-jev setup --dry-run                                  # preview, writes nothing
 fusion-jev config env-file /absolute/path/to/provider.env   # save a path
 fusion-jev config env-file --clear                          # remove the saved path
@@ -53,7 +54,7 @@ Setup creates a private user-owned directory and files and never overwrites or l
 ## Behavior notes
 
 - Local read requests are bounded, literal searches report omissions, and command execution requires the host's authorization. A choice result never grants permission to execute a write.
-- Fusion captures command output only when the host deliberately runs the `fusion-jev run` wrapper; it does not intercept commands.
+- Fusion captures command output only when the host deliberately runs the `npx -y fusion-jev run` wrapper (or `fusion-jev run` after a global install); it does not intercept commands.
 - Git inspection reports submodule commit pointers and dirty summaries but does not include submodule file contents. Repository layouts with redirected directories or unrelated external Git metadata fail closed; ordinary repositories and linked worktrees are supported.
 
 ## Cost

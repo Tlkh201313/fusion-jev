@@ -79,6 +79,7 @@ test('workspace assist advertises three concise tools and full retains legacy sc
   assert.ok(legacy?.inputSchema.properties?.maxLines);
   assert.match(assist.instructions ?? '', /Fusion.*inspection/i);
   assert.match(assist.instructions ?? '', /RTK/);
+  assert.match(assist.instructions ?? '', /npx -y fusion-jev run/);
   assert.ok((assist.instructions ?? '').length < 700);
 });
 

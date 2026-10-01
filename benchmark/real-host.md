@@ -4,7 +4,7 @@ Offline fixtures in this repo verify output handling. They do not show what a re
 
 ## What to measure
 
-For each workload, compare the output the host would receive natively with what it receives through `fusion-jev run`, and check that the original is recoverable.
+For each workload, compare the output the host would receive natively with what it receives through `npx -y fusion-jev run`, and check that the original is recoverable.
 
 | Workload | Command (run in a real project) |
 | --- | --- |
@@ -17,12 +17,12 @@ Use projects large enough that the output is genuinely noisy. Record the project
 
 ## Method
 
-Use the same command, working directory and repository state for both runs. In PowerShell, quote the separator: `fusion-jev run '--' ...`.
+Use the same command, working directory and repository state for both runs. In PowerShell, quote the separator: `npx -y fusion-jev run '--' ...`.
 
 1. **Raw bytes.** Run the command natively and capture both streams: `cmd > raw.txt 2>&1`, then `wc -c raw.txt` (or `(Get-Item raw.txt).Length` on PowerShell).
-2. **Compact bytes.** Run `fusion-jev run -- cmd > compact.txt 2>&1` and measure `compact.txt` the same way. This includes the summary, receipt IDs and recovery lines, which is what the host receives.
+2. **Compact bytes.** Run `npx -y fusion-jev run -- cmd > compact.txt 2>&1` and measure `compact.txt` the same way. This includes the summary, receipt IDs and recovery lines, which is what the host receives.
 3. **Estimated tokens.** Report raw and compact bytes divided by 4 as an estimate, and label it as one. If your host shows real token usage for a tool result, record that as well in a separate column or note, and say how it was read.
-4. **Recovery.** Copy the stdout receipt ID from the compact output, then run `fusion-jev evidence ID --raw > recovered.txt` within 10 minutes and compare it with the native stdout (for example `cmp`). Record Y only for a byte-exact match, and note any `stdoutTruncated` or `stdoutRedacted` flags.
+4. **Recovery.** Copy the stdout receipt ID from the compact output, then run `npx -y fusion-jev evidence ID --raw > recovered.txt` within 10 minutes and compare it with the native stdout (for example `cmp`). Record Y only for a byte-exact match, and note any `stdoutTruncated` or `stdoutRedacted` flags.
 5. **Task check (optional).** Ask the host to diagnose the failure from the compact result and note whether it needed to expand a receipt. Record how many expansions it needed.
 6. Repeat each workload several times. Report the number of runs and the spread, not only the best run.
 

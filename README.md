@@ -26,20 +26,21 @@ A deliberately failing command with 200 lines of noise and one real error:
 npx -y fusion-jev run '--' node -e "for (let i=0;i<200;i++) console.log('unchanged context '+i); console.error('src/example.ts:4:2 - error TS2322: fixture failure'); process.exitCode=2"
 ```
 
-The host sees a compact result (real output, receipt IDs shortened, path-bearing `recover*Argv` lines omitted):
+The host sees a compact result. This is real output from the CLI (stdout lines first, then the stderr lines), trimmed only in that receipt UUIDs are shortened to their first 8 characters (`…`) and the two `recover*Argv` lines, which carry machine paths, are omitted:
 
 ```text
-termination=exit exitCode=2 stdout=f73fce41-… stdoutStoredBytes=4290 stderr=e7162f21-… stderrStoredBytes=51 durationMs=93
-omittedBytes=4290 diagnosticsOmitted=0 unparsedBytes=0
-src/example.ts:4:2: error: fixture failure [e7162f21-…:0-50]
-recoverStdout=fusion-jev evidence f73fce41-… --raw
-recoverStderr=fusion-jev evidence e7162f21-… --raw
+termination=exit exitCode=2 stdout=5c4424bf-… stdoutTruncated=false stdoutRedacted=false stdoutStoredBytes=4290 stdoutOriginalBytes=4290 stderr=acdb14bf-… stderrTruncated=false stderrRedacted=false stderrStoredBytes=51 stderrOriginalBytes=51 durationMs=190 cleanupFailed=false
+omittedBytes=4290 diagnosticsOmitted=0 excerptsClipped=0 unparsedBytes=0
+src/example.ts:4:2: error: fixture failure [acdb14bf-…:0-50]
+omittedBytes=51 diagnosticsOmitted=0 excerptsClipped=0 unparsedBytes=0
+recoverStdout=npx -y fusion-jev evidence 5c4424bf-… --raw
+recoverStderr=npx -y fusion-jev evidence acdb14bf-… --raw
 ```
 
-The process exit code (2) is preserved. All 4,290 bytes of stdout stay available:
+In the real output each receipt ID is a full 36-character UUID; paste the full ID when recovering. The process exit code (2) is preserved. All 4,290 bytes of stdout stay available:
 
 ```sh
-npx -y fusion-jev evidence f73fce41-… --raw   # prints the original 200 lines
+npx -y fusion-jev evidence 5c4424bf-… --raw   # prints the original 200 lines
 ```
 
 ## Install in 30 seconds
@@ -73,6 +74,10 @@ command = "npx"
 args = ["-y", "fusion-jev", "stdio"]
 ```
 
+### Native Windows
+
+If the host reports `Connection closed` or `ENOENT` for `npx` (it is a `.cmd` shim), add the Claude Code server with the `cmd` wrapper instead of the plugin: `claude mcp add fusion-jev -- cmd /c npx -y fusion-jev stdio`. This is the reported workaround ([anthropics/claude-code#20061](https://github.com/anthropics/claude-code/issues/20061)), not something Claude Code's MCP docs describe. For Codex, no Windows-specific `npx` form is documented; use the absolute-path command from `fusion-jev setup --dry-run` after a global install. Details: [docs/install.md](docs/install.md#windows-notes).
+
 ### CLI only
 
 ```sh
@@ -97,14 +102,14 @@ The default profile exposes three MCP tools:
 | `fusion_assist` | A short grounded goal when the next bounded inspection is unclear. |
 | `fusion_evidence` | Recover captured detail with explicit clipping, redaction and expiry information. |
 
-Commands are run through the CLI wrapper, `fusion-jev run -- program args...`, chosen and authorized by your host. Fusion does not intercept native tools or pick arbitrary shell commands.
+Commands are run through the CLI wrapper, `npx -y fusion-jev run -- program args...` (or `fusion-jev run -- program args...` after a global install), chosen and authorized by your host. Fusion does not intercept native tools or pick arbitrary shell commands.
 
 ## How it works
 
 ```mermaid
 flowchart LR
   Host["Host<br/>(Claude Code / Codex)"] -->|MCP tools| Server["fusion-jev stdio"]
-  Host -->|"fusion-jev run -- cmd"| Exec["Executor<br/>captures stdout and stderr"]
+  Host -->|"npx -y fusion-jev run -- cmd"| Exec["Executor<br/>captures stdout and stderr"]
   Server --> Exec
   Exec -->|"redact known secrets, cap size"| Store[("Receipt store<br/>local, private, expiring")]
   Exec -->|"compact diagnostic + receipt IDs"| Host
@@ -126,7 +131,7 @@ If you set `TYPESAFE_API_KEY`, Fusion can ask TypeSafe's Jev to pick among a sho
 ## Glossary
 
 - **Host**: the coding agent that runs Fusion, such as Claude Code or Codex. It keeps reasoning, edits, command authorization and correctness decisions.
-- **Receipt**: an ID for captured command output or inspection data, stored locally and expandable through `fusion_evidence` or `fusion-jev evidence ID`.
+- **Receipt**: an ID for captured command output or inspection data, stored locally and expandable through `fusion_evidence` or `npx -y fusion-jev evidence ID`.
 - **Jev**: a model service from TypeSafe ([docs](https://docs.typesafe.ai/api)) that Fusion can optionally consult to choose among validated candidate actions. Fusion Jev is an independent community integration and is not affiliated with TypeSafe.
 - **Escalation**: returning an uncertain decision to the host instead of guessing.
 - **Profile**: the tool set the MCP server exposes. `assist` (default) has the three tools above; `FUSION_MCP_PROFILE=full` adds routing and inspection tools.
@@ -149,7 +154,7 @@ More questions and troubleshooting: [docs/faq.md](docs/faq.md).
 - Each output stream is captured up to 8 MiB. Check `stdoutTruncated` and `stdoutRedacted`: recovery returns the retained bytes, not omitted or redacted content. Redaction matches known secret patterns and is not a guarantee that output holds no secrets.
 - Tiny outputs can come back slightly larger than the original because of receipt overhead.
 - The evidence store uses `better-sqlite3`, a native module. Installation needs a prebuilt binary for your Node/platform or a local build toolchain (see [docs/install.md](docs/install.md)).
-- Token or speed savings have not been measured on real hosts yet. The method and an empty results table are in [benchmark/real-host.md](benchmark/real-host.md); no savings figure is claimed.
+- Token or speed savings have not been measured on real hosts yet. The method and an empty results table are in [benchmark/real-host.md](https://github.com/Tlkh201313/fusion-jev/blob/main/benchmark/real-host.md); no savings figure is claimed.
 - Jev's confidence and probability values are uncalibrated gates, and a configured key is not proof it works.
 
 ## Develop
@@ -161,4 +166,4 @@ npm run check        # typecheck + tests + build
 npm run pack:smoke   # install the packed tarball in a clean directory
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md), [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md), [CHANGELOG.md](CHANGELOG.md) and the [docs index](docs/README.md). Released under the [MIT license](LICENSE).
+See [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md), [CODE_OF_CONDUCT.md](https://github.com/Tlkh201313/fusion-jev/blob/main/CODE_OF_CONDUCT.md), [CHANGELOG.md](CHANGELOG.md) and the [docs index](docs/README.md). Released under the [MIT license](LICENSE).

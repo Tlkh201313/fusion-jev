@@ -11,6 +11,6 @@
 Other places to look:
 
 - [Project README](../README.md): the 30-second pitch and install commands.
-- [Examples](../examples/README.md): runnable scripts from a source checkout.
-- [Benchmarks](../benchmark/real-host.md): method and results template for measuring real hosts.
+- [Examples](https://github.com/Tlkh201313/fusion-jev/blob/main/examples/README.md): runnable scripts from a source checkout.
+- [Benchmarks](https://github.com/Tlkh201313/fusion-jev/blob/main/benchmark/real-host.md): method and results template for measuring real hosts.
 - [Contributing](../CONTRIBUTING.md), [Security](../SECURITY.md), [Changelog](../CHANGELOG.md).

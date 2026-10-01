@@ -19,7 +19,7 @@
     "developerName": "Fusion contributors",
     "category": "Productivity",
     "capabilities": ["Read"],
-    "defaultPrompt": ["Try Fusion first for grounded repository inspection: fusion_assist for a bounded task, fusion_inspect for known reads, and fusion_evidence for exact bytes or attributed host research. Do not call Jev for obvious reads.", "Codex owns reasoning, edits, command choice, permissions, research and correctness. Run chosen commands through fusion-jev run -- program argv...; use RTK/native tools when unavailable or unsupported. Continue in Codex on escalation."]
+    "defaultPrompt": ["Try Fusion first for grounded repository inspection: fusion_assist for a bounded task, fusion_inspect for known reads, and fusion_evidence for exact bytes or attributed host research. Do not call Jev for obvious reads.", "Codex owns reasoning, edits, command choice, permissions, research and correctness. Run chosen commands through npx -y fusion-jev run -- program argv... (or fusion-jev run if installed globally); use RTK/native tools when unavailable or unsupported. Continue in Codex on escalation."]
   },
   "mcpServers": "./.mcp.json"
 }

@@ -28,7 +28,7 @@ No. It does not intercept native tools. Your host chooses when to call it, and h
 ## Using it
 
 **How do I recover the full output?**
-Copy a receipt ID from the compact result, then run `fusion-jev evidence ID --raw` or call `fusion_evidence`. Do it within 10 minutes. See [how it works](how-it-works.md#receipt-lifecycle).
+Copy a receipt ID from the compact result, then run `npx -y fusion-jev evidence ID --raw` (or `fusion-jev evidence ID --raw` after a global install) or call `fusion_evidence`. Do it within 10 minutes. See [how it works](how-it-works.md#receipt-lifecycle).
 
 **Why did recovery say `expired` or `missing`?**
 The receipt passed its 10-minute expiry or was evicted (the store keeps at most 128 receipts and 32 MiB). The CLI and MCP server must also run as the same user to share one store.
@@ -37,7 +37,7 @@ The receipt passed its 10-minute expiry or was evicted (the store keeps at most 
 For small output you want verbatim. `run --raw` prints the output directly and creates no receipt.
 
 **The tools do not show up in my host.**
-Reload the MCP connection or start a fresh session, then run `fusion-jev doctor stdio`. More in [install troubleshooting](install.md#troubleshooting).
+Reload the MCP connection or start a fresh session, then run `npx -y fusion-jev doctor stdio`. More in [install troubleshooting](install.md#troubleshooting).
 
 **Is this an official TypeSafe product?**
 No. It is an independent community integration; Jev is an external TypeSafe service.

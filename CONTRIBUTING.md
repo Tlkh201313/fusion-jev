@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for helping. Please read the [Code of Conduct](CODE_OF_CONDUCT.md). Report security issues privately, as described in [SECURITY.md](SECURITY.md).
+Thanks for helping. Please read the [Code of Conduct](https://github.com/Tlkh201313/fusion-jev/blob/main/CODE_OF_CONDUCT.md). Report security issues privately, as described in [SECURITY.md](SECURITY.md).
 
 ## Setup
 
@@ -30,6 +30,7 @@ npm run build
 | `npm run benchmark:live` | Billable live-provider run; needs `FUSION_LIVE_BENCHMARK=1` and keys. Never enable in CI. |
 | `npm run pack:smoke` | Pack the tarball and exercise it from a clean consumer directory. |
 | `npm run pack:check` | `npm pack --dry-run` to list package contents. |
+| `npm run version:check` | Verify `server.json`, plugin manifests and plugin pins match `package.json`. |
 | `npm run doctor` | Local readiness check from the checkout. |
 
 ## Tests
@@ -59,6 +60,22 @@ npm run build
 
 - Offline benchmarks live in `benchmark/`. Add fixtures to `benchmark/support-fixtures.ts` for output-handling cases, or workloads to `benchmark/workflows.ts`, and run them through the matching `npm run benchmark:*` script.
 - For output or performance changes, report the same workload before and after: emitted payload bytes, expansion bytes, local latency and recovery assertions. Offline bytes/4 estimates and local latency do not establish paid host cost or end-to-end quality.
-- Real-host measurements follow the method in [benchmark/real-host.md](benchmark/real-host.md).
+- Real-host measurements follow the method in [benchmark/real-host.md](https://github.com/Tlkh201313/fusion-jev/blob/main/benchmark/real-host.md).
+
+## Releasing
+
+Maintainers only. The version lives in `package.json`; `scripts/sync-version.mjs` copies it into `server.json` (both `version` fields), the three plugin manifests, the `fusion-jev@<version>` pin in both plugin `.mcp.json` files and the server version in `src/mcp.ts`. `npm run version:check` verifies they agree, and `test/plugin.test.ts` asserts it.
+
+1. Move the `[Unreleased]` changelog entries under the new version.
+2. Run `npm version <patch|minor|major|x.y.z>` on a clean `main`. npm bumps `package.json` and the lockfile, runs the `version` script (the sync script, then `git add` for the files it changed), commits and creates the `vX.Y.Z` tag.
+3. Push the commit and the tag (`git push --follow-tags`). The release workflow first fails unless the tag (without the `v`), `package.json`, `server.json` and the plugin pins all agree, then runs `npm run check`, `npm run pack:smoke` and `npm publish --provenance --access public` (needs the `NPM_TOKEN` secret).
+4. After the package is on npm, publish the registry entry by hand; the workflow does not do this. Install [`mcp-publisher`](https://modelcontextprotocol.io/registry/quickstart), then from the repository root:
+
+   ```sh
+   mcp-publisher login github     # device-code flow in your browser
+   mcp-publisher publish          # publishes ./server.json
+   ```
+
+   The registry requires `server.json`'s `name` to equal `mcpName` in `package.json` and, for GitHub login, to start with `io.github.<your GitHub login>/`. The registry source builds that namespace from your GitHub login exactly as GitHub returns it and compares it case-sensitively, which is why the name is `io.github.Tlkh201313/fusion-jev`.
 
 This is a community project and is not an official TypeSafe product.

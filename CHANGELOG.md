@@ -10,8 +10,13 @@ All notable changes to this project are documented here. The format follows [Kee
 - Claude Code and Codex plugins now launch the server with `npx -y fusion-jev stdio`, so no prior global install is needed.
 - Rewrote the README around a quick install, a before/after example, a how-it-works diagram, a glossary, an FAQ and a single consolidated Limits section.
 
+- Plugin launches are pinned to the package version (`npx -y fusion-jev@<version> stdio`), kept in sync by `scripts/sync-version.mjs` (run by `npm version`); the release workflow now fails on a tag/version mismatch.
+- Host guidance and the CLI recovery lines now use `npx -y fusion-jev ...`, which works without a global install. The `recover*Argv` lines are unchanged.
+- The registry name and `mcpName` are now `io.github.Tlkh201313/fusion-jev` to match the GitHub login case; the registry compares namespaces case-sensitively.
+
 ### Added
 
+- Native Windows `npx` troubleshooting and a README sample taken from real CLI output.
 - Documentation: install guide for every host (including Codex `config.toml` and Windows notes), how-it-works, FAQ, docs index and an examples README.
 - `benchmark/real-host.md`: a method and empty results template for measuring real hosts.
 - Community files: Code of Conduct, feature-request issue template, issue template config, expanded contributing guide and a shorter pull request checklist.

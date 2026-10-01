@@ -28,4 +28,4 @@ It fits less well if native tools or RTK already cover your workflow, or if you 
 
 ## Measuring for yourself
 
-Record version, OS, host, command, workload and run order. Report what the host actually receives, not just serialized bytes or bytes/4 estimates. Label a missing comparator unavailable instead of counting it as a win, and keep small-result and latency regressions visible. Synthetic fixtures test output handling; they do not establish equal task quality or lower subscription usage. A template lives in [benchmark/real-host.md](../benchmark/real-host.md).
+Record version, OS, host, command, workload and run order. Report what the host actually receives, not just serialized bytes or bytes/4 estimates. Label a missing comparator unavailable instead of counting it as a win, and keep small-result and latency regressions visible. Synthetic fixtures test output handling; they do not establish equal task quality or lower subscription usage. A template lives in [benchmark/real-host.md](https://github.com/Tlkh201313/fusion-jev/blob/main/benchmark/real-host.md).

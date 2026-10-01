@@ -7,7 +7,7 @@
   "license": "MIT",
   "author": "Fusion contributors",
   "keywords": ["mcp", "mcp-server", "model-context-protocol", "claude-code", "codex", "ai-agents", "token-saving", "cli", "developer-tools"],
-  "mcpName": "io.github.tlkh201313/fusion-jev",
+  "mcpName": "io.github.Tlkh201313/fusion-jev",
   "publishConfig": {
     "access": "public",
     "provenance": true
@@ -61,6 +61,8 @@
     "pack:smoke": "node scripts/package-smoke.mjs",
     "check": "npm run typecheck && npm test && npm run build",
     "prepack": "npm run build",
+    "version": "node scripts/sync-version.mjs && git add -A server.json plugin src/mcp.ts",
+    "version:check": "node scripts/sync-version.mjs --check",
     "setup": "npm run build && node dist/cli.js setup"
   },
   "dependencies": {

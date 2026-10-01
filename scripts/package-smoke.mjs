@@ -6,6 +6,7 @@ import { basename, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const checkout = fileURLToPath(new URL('..', import.meta.url));
+const { version } = JSON.parse(await readFile(join(checkout, 'package.json'), 'utf8'));
 const npmCli = process.env.npm_execpath;
 if (!npmCli) throw new Error('Run this check with npm run pack:smoke');
 const root = await mkdtemp(join(tmpdir(), 'fusion-consumer-'));
@@ -30,7 +31,7 @@ try {
   new LocalEvidenceStore({storageDir:root});
   await mkdir(join(root,'cache'));
   const paths = packed.files.map(file => file.path);
-  assert.ok(!paths.some(path => path.startsWith('examples/') || path.startsWith('src/')));
+  assert.ok(!paths.some(path => /^(examples|src|test|scripts|benchmark|internal)\//.test(path) || path === 'server.json'));
   for (const required of ['dist/index.js', 'dist/index.d.ts', 'dist/cli.js', 'plugin/fusion-jev/plugin.json', 'plugin/fusion-jev/.codex-plugin/plugin.json', 'plugin/fusion-jev/.mcp.json', 'plugin/fusion-jev/assets/logo.png', 'plugin/fusion-jev/assets/icon.png', 'plugin/fusion-jev-claude/.claude-plugin/plugin.json', 'plugin/fusion-jev-claude/.mcp.json', 'plugin/fusion-jev-claude/hooks/hooks.json', 'plugin/fusion-jev-claude/skills/assist/SKILL.md']) assert.ok(paths.includes(required), `Missing ${required}`);
   assert.equal(packed.filename, basename(packed.filename));
   const consumer = join(root, 'consumer');
@@ -83,10 +84,16 @@ try {
     const client = new Client({name:'claude-plugin-consumer',version:'1'});
     try {
       assert.equal(config.env.FUSION_WORKSPACE_ROOT,'\${CLAUDE_PROJECT_DIR}');
-      assert.equal(config.command,'npx');assert.deepEqual(config.args,['-y','fusion-jev','stdio']);
-      // Launch the locally installed bin: same package the npx entry resolves, without touching the network.
-      await client.connect(new StdioClientTransport({command:'fusion-jev',args:config.args.slice(2),
-        env:{...process.env,PATH:resolve('node_modules/.bin')+delimiter+process.env.PATH,...config.env,FUSION_WORKSPACE_ROOT:process.cwd(),TYPESAFE_API_KEY:'',JEV_API_KEY:''}}));
+      assert.equal(config.command,'npx');
+      assert.deepEqual(config.args,['-y','fusion-jev@${version}','stdio'],'plugin pins the packed version');
+      // Launch exactly what the manifest says (command and args, unmodified). The SDK transport spawns through
+      // cross-spawn, so npx resolves to npx.cmd on Windows. The registry points at a dead address and npm is offline,
+      // so this only passes if npx resolves the pinned fusion-jev@<version> from the consumer's installed tarball
+      // without the network. It cannot prove that the registry serves that version after publish; only a published
+      // package can show that.
+      await client.connect(new StdioClientTransport({command:config.command,args:config.args,cwd:process.cwd(),
+        env:{...process.env,...config.env,FUSION_WORKSPACE_ROOT:process.cwd(),TYPESAFE_API_KEY:'',JEV_API_KEY:'',
+          npm_config_offline:'true',npm_config_registry:'http://127.0.0.1:9/',npm_config_fetch_retries:'0'}}));
       assert.deepEqual((await client.listTools()).tools.map(tool=>tool.name),['fusion_assist','fusion_inspect','fusion_evidence']);
       const result=await client.callTool({name:'fusion_inspect',arguments:{requests:[{action:'read',path:'package.json',maxLines:2}]}});
       assert.equal(result.isError,undefined);

@@ -89,14 +89,16 @@ The server permits the canonical directory it starts in. If your host starts MCP
 ## Verify
 
 ```sh
-fusion-jev doctor stdio
+npx -y fusion-jev doctor stdio    # or: fusion-jev doctor stdio after a global install
 ```
 
 Expect `"status": "ready"` and, without a key, a warning that the optional provider is missing. Doctor never calls a provider and always reports `liveConnectivity: "not-tested"`. Then ask your host: "Use Fusion to read the first 20 lines of this project's package.json." In Claude Code, `/mcp` lists connected servers.
 
 ## Windows notes
 
-- **PowerShell and `--`.** PowerShell can swallow a bare `--`. Quote it: `fusion-jev run '--' npm test`.
+- **PowerShell and `--`.** PowerShell can swallow a bare `--`. Quote it: `npx -y fusion-jev run '--' npm test` (or `fusion-jev run '--' npm test` after a global install).
+- **`npx` as an MCP command (native Windows, not WSL).** `npx` is a `.cmd` shim, and a host that starts MCP servers without a shell can fail with `Connection closed` or `ENOENT`. For Claude Code, wrap it: `claude mcp add fusion-jev -- cmd /c npx -y fusion-jev stdio`. Claude Code is reported to print "Windows requires 'cmd /c' wrapper to execute npx" for a bare `npx` ([anthropics/claude-code#20061](https://github.com/anthropics/claude-code/issues/20061)); that issue also reports `/c` being rewritten into a path by `claude mcp add`, in which case edit the saved entry to `"command": "cmd"`, `"args": ["/c", "npx", "-y", "fusion-jev", "stdio"]`. The `cmd /c` wrapper is not described in Claude Code's current MCP documentation, so treat it as a reported workaround. The Claude plugin's `.mcp.json` uses a bare `npx` (no OS-specific plugin setting is documented), so on native Windows add the server with the command above instead of the plugin. The Codex MCP documentation gives no Windows-specific `npx` form, and none is verified here.
+- **No shell shim at all.** After `npm install -g fusion-jev`, `fusion-jev setup --dry-run` prints `claude mcp add` and `codex mcp add` commands that run `node.exe` on the CLI file by absolute path. Use those if `npx` will not start under your host.
 - **Native module.** Evidence storage uses `better-sqlite3`. npm normally downloads a prebuilt binary. If your Node version or architecture has none, npm falls back to compiling, which needs Python and the Visual Studio C++ build tools. Install those, or use a supported Node LTS, then reinstall.
 - **Config location.** Setup stores configuration under `~/.fusion-jev-mcp` on Windows. If a location is reported unsafe, set `FUSION_CONFIG_HOME` to an absolute base directory owned by you and not writable by other users.
 
@@ -105,6 +107,7 @@ Expect `"status": "ready"` and, without a key, a warning that the optional provi
 | Symptom | What to check |
 | --- | --- |
 | `command not found` / server fails to start | Confirm `node --version` is 22.12 or newer and that the host can run `npx`. With a global install, make sure npm's bin directory is on the PATH the host sees, then restart the host. |
+| `Connection closed` or `ENOENT` on native Windows | The host could not start the `npx` shim. See [Windows notes](#windows-notes): use `claude mcp add fusion-jev -- cmd /c npx -y fusion-jev stdio`, or the absolute-path command from `fusion-jev setup --dry-run`. |
 | `better-sqlite3` build or `bindings` error | See [Windows notes](#windows-notes). On Linux/macOS install a C/C++ toolchain and Python, or use a Node version with a prebuilt binary. |
 | Jev reported missing | Expected without a key; local tools still work. Set `TYPESAFE_API_KEY` in the private provider file or launch environment. Doctor confirms presence, not validity. |
 | Root rejected | Approve the exact project root via `FUSION_WORKSPACE_ROOT` or `FUSION_WORKSPACE_ALLOWED_ROOTS`. Fusion does not inherit every directory your host can read. |
@@ -112,4 +115,4 @@ Expect `"status": "ready"` and, without a key, a warning that the optional provi
 | Output looks redacted or clipped | Check `stdoutTruncated` / `stdoutRedacted`. Recovery returns retained bytes only. |
 | Config location reported unsafe | Set `FUSION_CONFIG_HOME` as described above. Fusion never loosens permission checks. |
 
-The configuration and evidence directory name stays `fusion-jev-mcp` (for example `~/.fusion-jev-mcp` on Windows) for continuity, separate from any other installation of a command named `fusion`.
+The package and command are `fusion-jev`, but the configuration and evidence directory name stays `fusion-jev-mcp` for continuity, separate from any other installation of a command named `fusion`. To clear stored receipts, delete the evidence directory: `%LOCALAPPDATA%\fusion-jev-mcp\evidence` on Windows, or `${XDG_CACHE_HOME:-~/.cache}/fusion-jev-mcp/evidence` on Linux and macOS. Configuration lives in `~/.fusion-jev-mcp` on Windows and `${XDG_CONFIG_HOME:-~/.config}/fusion-jev-mcp` elsewhere (`FUSION_CONFIG_HOME` overrides the base).

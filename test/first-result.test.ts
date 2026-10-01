@@ -14,7 +14,7 @@ test('first noisy failure prints recovery command and recovers exact retained st
   const args=['--import',import.meta.resolve('tsx'),cli];
   const run=spawnSync(process.execPath,[...args,'run','--',process.execPath,'-e',code],{env,encoding:'utf8'});
   assert.equal(run.status,2);assert.match(run.stderr,/fixture failure/);
-  const id=/recoverStdout=fusion-jev evidence ([0-9a-f-]{36}) --raw/.exec(run.stdout)?.[1];assert.ok(id);
+  const id=/recoverStdout=npx -y fusion-jev evidence ([0-9a-f-]{36}) --raw/.exec(run.stdout)?.[1];assert.ok(id);
   assert.ok(Buffer.byteLength(run.stdout)<Buffer.byteLength(expected));
   const recovered=spawnSync(process.execPath,[...args,'evidence',id,'--raw'],{env,encoding:'utf8'});
   assert.equal(recovered.status,0,recovered.stderr);assert.equal(recovered.stdout,expected);

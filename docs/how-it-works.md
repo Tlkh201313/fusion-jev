@@ -5,7 +5,7 @@ Fusion Jev is a thin local layer between your coding agent (the **host**) and th
 ```mermaid
 flowchart LR
   Host["Host<br/>(Claude Code / Codex)"] -->|MCP tools| Server["fusion-jev stdio"]
-  Host -->|"fusion-jev run -- cmd"| Exec["Executor<br/>captures stdout and stderr"]
+  Host -->|"npx -y fusion-jev run -- cmd"| Exec["Executor<br/>captures stdout and stderr"]
   Server --> Exec
   Exec -->|"redact known secrets, cap size"| Store[("Receipt store<br/>local, private, expiring")]
   Exec -->|"compact diagnostic + receipt IDs"| Host
@@ -16,7 +16,7 @@ flowchart LR
 ## Components
 
 - **MCP server (`fusion-jev stdio`).** Exposes `fusion_inspect`, `fusion_assist` and `fusion_evidence` by default. `FUSION_MCP_PROFILE=full` adds routing and per-operation inspection tools. All inspection tools are read-only and limited to approved workspace roots.
-- **Command wrapper (`fusion-jev run -- program argv...`).** The host chooses the command and its arguments, and its own permission system still applies. The wrapper runs the program, captures stdout and stderr separately, summarizes supported diagnostics, and exits with the child's status (124 on timeout, 130 on cancel, 127 if the program cannot be launched). `--raw` prints output directly and creates no receipt.
+- **Command wrapper (`npx -y fusion-jev run -- program argv...`, or `fusion-jev run ...` after a global install).** The host chooses the command and its arguments, and its own permission system still applies. The wrapper runs the program, captures stdout and stderr separately, summarizes supported diagnostics, and exits with the child's status (124 on timeout, 130 on cancel, 127 if the program cannot be launched). `--raw` prints output directly and creates no receipt.
 - **Receipt store.** A private directory in your user cache (`fusion-jev-mcp/evidence`) shared by the CLI and the MCP server when run as the same user.
 - **Jev (optional).** When `TYPESAFE_API_KEY` is set, the router can ask TypeSafe's Jev to pick one ID from a bounded list of validated candidates, or to escalate. Jev cannot produce commands, arguments or code, and a choice never grants permission to write.
 
@@ -26,7 +26,7 @@ flowchart LR
 2. **Sanitize.** A short list of known credential patterns (assignments such as `TYPESAFE_API_KEY=...` or `OPENAI_API_KEY=...`, and `Authorization: Bearer ...` headers) is replaced with `[REDACTED]` before storage, and the receipt is flagged `redacted`. This is pattern matching, not a guarantee that output contains no secrets.
 3. **Store.** The bytes are written to the private store and given a receipt: a UUID, a SHA-256 of the stored bytes, stored and original byte counts, the `truncated` and `redacted` flags, the source, and an expiry 10 minutes out.
 4. **Summarize.** The host receives the receipt IDs plus a compact summary: up to four diagnostics per stream with byte ranges, counts of anything omitted, and the exact text when a stream is small (about 1.2 KB or less) and has no parsed diagnostics. The child's exit status, not log text, decides success or failure.
-5. **Recover.** `fusion_evidence` (MCP) or `fusion-jev evidence ID [--start-byte=N] [--max-bytes=N] [--raw]` returns pages of the retained bytes. Pages are at most 64 KiB; `--raw` follows continuation pages and writes the full retained stream. A page reports one of:
+5. **Recover.** `fusion_evidence` (MCP) or `npx -y fusion-jev evidence ID [--start-byte=N] [--max-bytes=N] [--raw]` returns pages of the retained bytes. Pages are at most 64 KiB; `--raw` follows continuation pages and writes the full retained stream. A page reports one of:
    - `ok`: bytes returned.
    - `stale`: the receipt came from a workspace file that has changed since capture; bytes are what was captured.
    - `expired`, `missing`: the receipt is past its 10-minute expiry, was evicted, or never existed.

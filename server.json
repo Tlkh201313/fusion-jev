@@ -1,6 +1,6 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.tlkh201313/fusion-jev",
+  "name": "io.github.Tlkh201313/fusion-jev",
   "title": "Fusion Jev",
   "description": "Local coding evidence and guarded official Jev choices for MCP hosts",
   "repository": {
