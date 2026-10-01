@@ -186,13 +186,13 @@ function privateStorageDirectory(path: string): { path: string; trusted: boolean
   mkdirSync(path, { recursive: true, mode: 0o700 });
   const info = lstatSync(path);
   if (!info.isDirectory() || info.isSymbolicLink()) throw new Error('Evidence storage requires a private non-symlink directory');
-  const actual = realpathSync(path);
+  const actual = realpathSync.native(path);
   let trusted = true;
   if (process.platform === 'win32') {
     // LOCALAPPDATA inherits the current user's Windows profile ACL; Task 2 places the CLI cache there.
     const local = process.env.LOCALAPPDATA;
-    if (!local || !(actual.toLowerCase() === realpathSync(local).toLowerCase()
-      || actual.toLowerCase().startsWith(realpathSync(local).toLowerCase() + sep.toLowerCase())))
+    if (!local || !(actual.toLowerCase() === realpathSync.native(local).toLowerCase()
+      || actual.toLowerCase().startsWith(realpathSync.native(local).toLowerCase() + sep.toLowerCase())))
       throw new Error('Evidence storage requires a private LOCALAPPDATA directory on Windows');
     trusted = hardenWindowsAcl(actual, true);
   } else if ((info.mode & 0o077) !== 0 || (process.getuid && info.uid !== process.getuid())) {

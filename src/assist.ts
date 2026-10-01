@@ -127,7 +127,7 @@ export class AssistanceService {
     if (request.root !== undefined) {
       if (!isAbsolute(request.root)) throw new WorkspaceError('INVALID_PATH', 'root must be absolute');
       let canonical: string;
-      try { canonical = realpathSync(request.root); } catch { throw new WorkspaceError('INVALID_PATH', 'Workspace root is unavailable'); }
+      try { canonical = realpathSync.native(request.root); } catch { throw new WorkspaceError('INVALID_PATH', 'Workspace root is unavailable'); }
       if (canonical !== this.workspace.root) throw new WorkspaceError('INVALID_PATH', 'root does not match this workspace');
     }
     const scope = gitIntent(request.task) ? await this.workspace.resolveGitScope(request.scope ?? '.')
