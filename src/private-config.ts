@@ -25,19 +25,22 @@ foreach ($rule in $acl.Access) {
   if ($rule.AccessControlType -ne [System.Security.AccessControl.AccessControlType]::Allow) { continue }
   if (($rule.PropagationFlags -band [System.Security.AccessControl.PropagationFlags]::InheritOnly) -ne 0) { continue }
   $sid = $rule.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value
-  if ($allowed -notcontains $sid -and (-not $parent -or ([int]$rule.FileSystemRights -band $writeRights) -ne 0)) { throw 'Shared access' }
+  if ($allowed -notcontains $sid -and (-not $parent -or ([int]$rule.FileSystemRights -band $writeRights) -ne 0)) { throw "Shared access ($sid rights $([int]$rule.FileSystemRights))" }
   if ($sid -eq $current.Value) { $selfAllowed = $true }
 }
 if (-not $selfAllowed -and -not $parent) { throw 'Current user lacks access' }
 $owner = $acl.GetOwner([System.Security.Principal.SecurityIdentifier]).Value
-if (($parent -and $allowed -notcontains $owner) -or (-not $parent -and $owner -ne $current.Value)) { throw 'Wrong owner' }
+if (($parent -and $allowed -notcontains $owner) -or (-not $parent -and $owner -ne $current.Value)) { throw "Wrong owner ($owner)" }
 [Console]::Out.WriteLine('PRIVATE')
 `;
   const powershell=join(process.env.SystemRoot ?? 'C:/Windows','System32','WindowsPowerShell','v1.0','powershell.exe');
   if (!isAbsolute(powershell)) throw new Error('Windows system executable path must be absolute');
   const result = spawnSync(powershell, ['-NoProfile','-NonInteractive','-Command',script], { windowsHide:true,encoding:'utf8',timeout:10_000,
     env:{...process.env,FUSION_PRIVATE_PATH:path,FUSION_PRIVATE_DIRECTORY:directory?'1':'0',FUSION_PRIVATE_PROTECT:protect?'1':'0',FUSION_PRIVATE_PARENT:parent?'1':'0'} });
-  if (result.status!==0 || result.stdout.trim()!=='PRIVATE') throw new Error('Configuration path permissions must be private to the current user');
+  if (result.status!==0 || result.stdout.trim()!=='PRIVATE') {
+    const reason=String(result.stderr ?? '').split(/\r?\n/, 1)[0]?.trim();
+    throw new Error('Configuration path permissions must be private to the current user'+(reason?` (${reason})`:''));
+  }
 }
 
 function assertSafeParent(path: string): void {
