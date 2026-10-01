@@ -19,6 +19,7 @@ const help = `Fusion Jev: local coding evidence and optional guarded choices
 
 Usage: fusion-jev [setup | stdio | http | doctor [stdio|http] | config doctor | --help] [--provider-env=ABSOLUTE_PATH]
        fusion-jev config env-file <ABSOLUTE_PATH | --clear>
+       fusion-jev config auto-wrap <on | off | status>
         fusion-jev run [--raw] [--timeout-ms=N] [--max-capture-bytes=N] [--cwd=ABSOLUTE_PATH] -- program argv...
         fusion-jev evidence ID [--start-byte=N] [--max-bytes=N] [--raw]
 
@@ -188,6 +189,25 @@ function configureEnvFile(value: string | undefined): void {
   process.stdout.write('Saved Fusion env-file path for future commands.\n');
 }
 
+// The Claude Code PreToolUse hook reads this flag; it lives beside config.json so
+// the saved env-file setting keeps its strict format.
+function configureAutoWrap(mode: 'on' | 'off' | 'status'): void {
+  const path = join(dirname(userConfigPath()), 'auto-wrap.json');
+  if (mode === 'status') {
+    let enabled = false;
+    try { enabled = JSON.parse(readFileSync(path, 'utf8')).enabled === true; } catch { /* Missing means off. */ }
+    const override = process.env.FUSION_AUTO_WRAP === '1' ? ' (FUSION_AUTO_WRAP=1 overrides)' : process.env.FUSION_AUTO_WRAP === '0' ? ' (FUSION_AUTO_WRAP=0 overrides)' : '';
+    process.stdout.write(`auto-wrap ${enabled ? 'on' : 'off'}${override}\n`);
+    return;
+  }
+  preparePrivateDirectory(dirname(path));
+  if (existsSync(path)) assertPrivatePath(path, false);
+  writeFileSync(path, JSON.stringify({ enabled: mode === 'on' }) + '\n', { mode: 0o600 });
+  process.stdout.write(mode === 'on'
+    ? 'Auto-wrap on: the Claude Code plugin routes simple noisy commands (tests, builds, linters) through fusion-jev run.\n'
+    : 'Auto-wrap off.\n');
+}
+
 async function main(): Promise<void> {
   if (process.argv[2] === 'run') { await runCli(process.argv.slice(3)); return; }
   if (process.argv[2] === 'evidence') { await evidenceCli(process.argv.slice(3)); return; }
@@ -201,6 +221,11 @@ async function main(): Promise<void> {
     const result = prepareSetup({ configDir: dirname(userConfigPath()), envFile: envFileArgs[0]?.slice('--provider-env='.length),
       executable: process.execPath, cliPath: fileURLToPath(new URL('../dist/cli.js', import.meta.url)), dryRun: args.includes('--dry-run') });
     process.stdout.write(result.instructions);
+    return;
+  }
+  if (args[0] === 'config' && args[1] === 'auto-wrap') {
+    if (args.length !== 3 || !['on', 'off', 'status'].includes(args[2]!)) throw new Error('Usage: fusion-jev config auto-wrap <on | off | status>');
+    configureAutoWrap(args[2] as 'on' | 'off' | 'status');
     return;
   }
   if (args[0] === 'config' && args[1] === 'env-file') {

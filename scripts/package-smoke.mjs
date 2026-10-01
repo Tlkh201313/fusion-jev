@@ -31,7 +31,7 @@ try {
   await mkdir(join(root,'cache'));
   const paths = packed.files.map(file => file.path);
   assert.ok(!paths.some(path => path.startsWith('examples/') || path.startsWith('src/')));
-  for (const required of ['dist/index.js', 'dist/index.d.ts', 'dist/cli.js', 'plugin/fusion-jev/plugin.json', 'plugin/fusion-jev/.codex-plugin/plugin.json', 'plugin/fusion-jev/.mcp.json', 'plugin/fusion-jev/assets/logo.png', 'plugin/fusion-jev/assets/icon.png', 'plugin/fusion-jev-claude/.claude-plugin/plugin.json', 'plugin/fusion-jev-claude/.mcp.json', 'plugin/fusion-jev-claude/hooks/hooks.json', 'plugin/fusion-jev-claude/skills/assist/SKILL.md']) assert.ok(paths.includes(required), `Missing ${required}`);
+  for (const required of ['dist/index.js', 'dist/index.d.ts', 'dist/cli.js', 'plugin/fusion-jev/plugin.json', 'plugin/fusion-jev/.codex-plugin/plugin.json', 'plugin/fusion-jev/.mcp.json', 'plugin/fusion-jev/assets/logo.png', 'plugin/fusion-jev/assets/icon.png', 'plugin/fusion-jev-claude/.claude-plugin/plugin.json', 'plugin/fusion-jev-claude/.mcp.json', 'plugin/fusion-jev-claude/hooks/hooks.json', 'plugin/fusion-jev-claude/scripts/pre-bash.cjs', 'plugin/fusion-jev-claude/skills/assist/SKILL.md']) assert.ok(paths.includes(required), `Missing ${required}`);
   assert.equal(packed.filename, basename(packed.filename));
   const consumer = join(root, 'consumer');
   await mkdir(consumer);
