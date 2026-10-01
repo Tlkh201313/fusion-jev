@@ -88,7 +88,12 @@ if ($isDirectory) {
     try {
       if (([System.IO.File]::GetAttributes($item) -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) { $wasTrusted = $false }
       elseif (-not (Test-PrivateAcl $item $false)) { $wasTrusted = $false }
-    } catch { if ([System.IO.File]::Exists($item)) { throw } }
+    } catch {
+      # Another process's SQLite journal files come and go; a file that vanished (even if recreated) is not a failure.
+      $inner = if ($_.Exception.InnerException) { $_.Exception.InnerException } else { $_.Exception }
+      $vanished = $inner -is [System.IO.FileNotFoundException] -or $inner -is [System.IO.DirectoryNotFoundException]
+      if (-not $vanished -and [System.IO.File]::Exists($item)) { throw }
+    }
   }
 }
 Protect-Item $target $isDirectory
@@ -104,7 +109,12 @@ if ($isDirectory) {
   foreach ($item in [System.IO.Directory]::EnumerateFiles($target, '*', [System.IO.SearchOption]::TopDirectoryOnly)) {
     try {
       if (([System.IO.File]::GetAttributes($item) -band [System.IO.FileAttributes]::ReparsePoint) -eq 0) { Protect-Item $item $false }
-    } catch { if ([System.IO.File]::Exists($item)) { throw } }
+    } catch {
+      # Another process's SQLite journal files come and go; a file that vanished (even if recreated) is not a failure.
+      $inner = if ($_.Exception.InnerException) { $_.Exception.InnerException } else { $_.Exception }
+      $vanished = $inner -is [System.IO.FileNotFoundException] -or $inner -is [System.IO.DirectoryNotFoundException]
+      if (-not $vanished -and [System.IO.File]::Exists($item)) { throw }
+    }
   }
 }
 [Console]::Out.WriteLine($(if ($wasTrusted) { 'TRUSTED' } else { 'UNTRUSTED' }))
