@@ -30,7 +30,11 @@ foreach ($rule in $acl.Access) {
 }
 if (-not $selfAllowed -and -not $parent) { throw 'Current user lacks access' }
 $owner = $acl.GetOwner([System.Security.Principal.SecurityIdentifier]).Value
-if (($parent -and $allowed -notcontains $owner) -or (-not $parent -and $owner -ne $current.Value)) { throw "Wrong owner ($owner)" }
+# Elevated Windows administrators create objects owned by the Administrators group rather than their own SID.
+# That group is already an accepted principal in the ACL, so accept it as owner only for an administrator caller.
+$administrator = [System.Security.Principal.WindowsPrincipal]::new([System.Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([System.Security.Principal.SecurityIdentifier]::new('S-1-5-32-544'))
+$ownerOk = if ($parent) { $allowed -contains $owner } else { $owner -eq $current.Value -or ($administrator -and $owner -eq 'S-1-5-32-544') }
+if (-not $ownerOk) { throw "Wrong owner ($owner)" }
 [Console]::Out.WriteLine('PRIVATE')
 `;
   const powershell=join(process.env.SystemRoot ?? 'C:/Windows','System32','WindowsPowerShell','v1.0','powershell.exe');
