@@ -120,7 +120,10 @@ if ($isDirectory) {
     env: { ...process.env, FUSION_EVIDENCE_ACL_PATH: path, FUSION_EVIDENCE_ACL_DIRECTORY: directory ? '1' : '0',
       FUSION_EVIDENCE_ACL_MUTEX: `Local\\FusionEvidenceAcl-${hash(Buffer.from(path.toLowerCase())).slice(0, 32)}` },
   });
-  if (result.status !== 0 || !/^(TRUSTED|UNTRUSTED)\s*$/.test(result.stdout)) throw new Error('Unable to make evidence storage private');
+  if (result.status !== 0 || !/^(TRUSTED|UNTRUSTED)\s*$/.test(result.stdout)) {
+    const reason = String(result.error?.message ?? result.stderr ?? '').split(/\r?\n/, 1)[0]?.trim();
+    throw new Error('Unable to make evidence storage private' + (reason ? ` (${reason})` : ''));
+  }
   return result.stdout.trim() === 'TRUSTED';
 }
 

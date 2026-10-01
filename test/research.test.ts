@@ -287,11 +287,16 @@ catch (error) { process.stdout.write(String(error).includes('Duplicate') ? 'DUPL
     });
     t.after(() => { if (!child.killed) child.kill(); });
     let output = ''; let errors = '';
-    let ready!: () => void;
-    const readyPromise = new Promise<void>(resolve => { ready = resolve; });
+    let ready!: () => void; let failReady!: (error: Error) => void;
+    const readyPromise = new Promise<void>((resolve, reject) => { ready = resolve; failReady = reject; });
     child.stdout.on('data', chunk => { output += String(chunk); if (output.includes('READY\n')) ready(); });
     child.stderr.on('data', chunk => { errors += String(chunk); });
-    const done = new Promise<string>((resolve, reject) => child.once('exit', code => code === 0 ? resolve(output) : reject(new Error(errors || output))));
+    const done = new Promise<string>((resolve, reject) => child.once('exit', code => {
+      if (code === 0) return resolve(output);
+      const failure = new Error(errors || output || `child exited with ${code}`);
+      failReady(failure); reject(failure); // a child that dies before READY must fail the test, not hang it
+    }));
+    done.catch(() => undefined);
     return { ready: readyPromise, done };
   };
   const first = launch(); const second = launch();
@@ -328,11 +333,16 @@ catch (error) { process.stdout.write(String(error).includes('expired or replaced
     });
     t.after(() => { if (!child.killed) child.kill(); });
     let output = ''; let errors = '';
-    let ready!: () => void;
-    const readyPromise = new Promise<void>(resolve => { ready = resolve; });
+    let ready!: () => void; let failReady!: (error: Error) => void;
+    const readyPromise = new Promise<void>((resolve, reject) => { ready = resolve; failReady = reject; });
     child.stdout.on('data', chunk => { output += String(chunk); if (output.includes('READY\n')) ready(); });
     child.stderr.on('data', chunk => { errors += String(chunk); });
-    const done = new Promise<string>((resolve, reject) => child.once('exit', code => code === 0 ? resolve(output) : reject(new Error(errors || output))));
+    const done = new Promise<string>((resolve, reject) => child.once('exit', code => {
+      if (code === 0) return resolve(output);
+      const failure = new Error(errors || output || `child exited with ${code}`);
+      failReady(failure); reject(failure); // a child that dies before READY must fail the test, not hang it
+    }));
+    done.catch(() => undefined);
     return { ready: readyPromise, done };
   };
   const first = launch('first'); const second = launch('second');
@@ -372,11 +382,16 @@ catch (error) { process.stdout.write(String(error).includes('Duplicate') ? 'DUPL
     });
     t.after(() => { if (!child.killed) child.kill(); });
     let output = ''; let errors = '';
-    let ready!: () => void;
-    const readyPromise = new Promise<void>(resolve => { ready = resolve; });
+    let ready!: () => void; let failReady!: (error: Error) => void;
+    const readyPromise = new Promise<void>((resolve, reject) => { ready = resolve; failReady = reject; });
     child.stdout.on('data', chunk => { output += String(chunk); if (output.includes('READY\n')) ready(); });
     child.stderr.on('data', chunk => { errors += String(chunk); });
-    const done = new Promise<string>((resolve, reject) => child.once('exit', code => code === 0 ? resolve(output) : reject(new Error(errors || output))));
+    const done = new Promise<string>((resolve, reject) => child.once('exit', code => {
+      if (code === 0) return resolve(output);
+      const failure = new Error(errors || output || `child exited with ${code}`);
+      failReady(failure); reject(failure); // a child that dies before READY must fail the test, not hang it
+    }));
+    done.catch(() => undefined);
     return { ready: readyPromise, done };
   };
   const first = launch(); const second = launch();
