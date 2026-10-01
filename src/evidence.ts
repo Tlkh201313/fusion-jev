@@ -284,7 +284,7 @@ export class EvidenceStore {
     };
     const entry = { receipt, bytes, sourceHash, canonicalPath, order: ++this.nextOrder };
     if (this.storageDir) {
-      this.reserveDiskReceipt(receipt);
+      this.reserveWithRetry(receipt);
       const file = join(this.storageDir, receipt.id + '.json');
       const temporary = join(this.storageDir, receipt.id + '.tmp');
       try {
@@ -421,6 +421,20 @@ export class EvidenceStore {
       return Boolean(db.prepare('SELECT id FROM cleanup_pending LIMIT 1').get());
     }).immediate());
     if (morePending) throw new Error('Evidence bounded storage cleanup requires another sweep');
+  }
+
+  // Another process's in-flight capture holds a slot only until it commits, after which
+  // this reservation can evict it. Wait briefly instead of failing the race outright.
+  private reserveWithRetry(receipt: EvidenceReceipt): void {
+    const deadline = Date.now() + 2000;
+    const pause = new Int32Array(new SharedArrayBuffer(4));
+    for (;;) {
+      try { this.reserveDiskReceipt(receipt); return; }
+      catch (error) {
+        if (!(error instanceof Error) || error.message !== 'Evidence bounded storage admission is full' || Date.now() >= deadline) throw error;
+        Atomics.wait(pause, 0, 0, 10);
+      }
+    }
   }
 
   private reserveDiskReceipt(receipt: EvidenceReceipt): void {
