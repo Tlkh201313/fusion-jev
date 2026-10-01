@@ -25,7 +25,7 @@ export const supportFixtures: SupportFixture[] = [
     id: 'failing-check', kind: 'command', task: 'Capture a failed check without treating its text as a pass',
     expectedStdout: '', expectedStderr: 'file.ts(3,4): error TS2345: expected string, received number\n',
     expectedExit: 1, diagnosticTruth: 'error',
-    approvedArgv: [process.execPath, '-e', 'process.stderr.write("file.ts(3,4): error TS2345: expected string, received number\\n"); process.exit(1)'],
+    approvedArgv: [process.execPath, '-e', 'process.stderr.write("file.ts(3,4): error TS2345: expected string, received number\\n"); process.exitCode = 1'],
     qualityRubric: 'Diagnostic bytes recovered and nonzero process exit preserved.',
   },
 ];
@@ -45,7 +45,7 @@ export function noisyFixtures(variants = 1): SupportFixture[] {
     return { id: `noisy-${index}-${variant}`, kind: 'command' as const,
       task: 'Surface a tail diagnostic without replaying progress; preserve exact output for expansion.',
       expectedStdout: '', expectedStderr: text, expectedExit: 1, diagnosticTruth: 'error' as const,
-      approvedArgv: [process.execPath, '-e', `process.stderr.write(${JSON.stringify(text)}); process.exit(1)`],
+      approvedArgv: [process.execPath, '-e', `process.stderr.write(${JSON.stringify(text)}); process.exitCode = 1`],
       qualityRubric: 'Exact stdout/stderr recovery, actual nonzero exit and visible diagnostic; generated parser corpus.' };
   })).flat();
 }
