@@ -358,3 +358,13 @@ test('router snapshots a validated configuration at construction', async () => {
   assert.equal(result.decision.source, 'host');
   assert.deepEqual(f.counts(), { jevCalls: 1, gptCalls: 0 });
 });
+
+test('rejected requests do not open the breaker; outages still do', async () => {
+  const config = loadConfig({ FUSION_BREAKER_THRESHOLD: '1', FUSION_BREAKER_COOLDOWN_MS: '1000' });
+  let attempts = 0;
+  const jev: ChoiceProvider = { async choose() { attempts++; throw new ProviderError(attempts < 3 ? 'http_error' : 'unavailable', [], 400); } };
+  const router = new FusionRouter({ config, jev, clock: () => 1_000 });
+  for (let index = 0; index < 3; index++) assert.equal((await router.route({ ...request, cache: false })).decision.reason, 'provider_error');
+  assert.equal((await router.route({ ...request, cache: false })).decision.reason, 'circuit_open');
+  assert.equal(attempts, 3);
+});

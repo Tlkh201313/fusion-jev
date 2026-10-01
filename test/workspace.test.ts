@@ -40,7 +40,7 @@ test('inspection distinguishes scoped staged and unstaged Git changes', async t 
   await writeFile(join(root, 'note.txt'), 'staged\n'); git('add', 'note.txt');
   await writeFile(join(root, 'note.txt'), 'unstaged\n');
   const router = selecting('unknown', []);
-  const server = createFusionMcpServer({ router, config: loadConfig({}), workspace: new WorkspaceService(root, router) });
+  const server = createFusionMcpServer({ router, config: loadConfig({ FUSION_MCP_PROFILE: 'full' }), workspace: new WorkspaceService(root, router) });
   const client = new Client({ name: 'staged-git', version: '1' });
   const [left, right] = InMemoryTransport.createLinkedPair();
   await server.connect(left); await client.connect(right);
@@ -131,7 +131,7 @@ test('named reads skip inference and page output without losing line numbers', a
   await writeFile(join(root, 'notes.txt'), 'one\ntwo\nthree\nfour\n');
   const seen: RouteRequest[] = [];
   const router = selecting('read_file', seen);
-  const server = createFusionMcpServer({ router, config: loadConfig({}),
+  const server = createFusionMcpServer({ router, config: loadConfig({ FUSION_MCP_PROFILE: 'full' }),
     workspace: new WorkspaceService(root, router) });
   const client = new Client({ name: 'named-tools-test', version: '1' });
   const [left, right] = InMemoryTransport.createLinkedPair();
@@ -161,7 +161,7 @@ test('repository overview gathers bounded entrypoint evidence in one MCP call wi
   await writeFile(join(root, '.env'), 'SECRET_SHOULD_NOT_APPEAR=1\n');
   const seen: RouteRequest[] = [];
   const router = selecting('unknown', seen);
-  const server = createFusionMcpServer({ router, config: loadConfig({}), workspace: new WorkspaceService(root, router) });
+  const server = createFusionMcpServer({ router, config: loadConfig({ FUSION_MCP_PROFILE: 'full' }), workspace: new WorkspaceService(root, router) });
   const client = new Client({ name: 'overview-test', version: '1' });
   const [left, right] = InMemoryTransport.createLinkedPair();
   await server.connect(left); await client.connect(right);
@@ -198,7 +198,7 @@ test('repository overview gathers bounded entrypoint evidence in one MCP call wi
     controller.abort();
     return { path, startLine: 1, lines: [{ number: 1, text: 'partial evidence' }], nextLine: null, shortenedLines: false };
   });
-  const interruptedServer = createFusionMcpServer({ router, config: loadConfig({}), workspace: interruptedService, signal: controller.signal });
+  const interruptedServer = createFusionMcpServer({ router, config: loadConfig({ FUSION_MCP_PROFILE: 'full' }), workspace: interruptedService, signal: controller.signal });
   const interruptedClient = new Client({ name: 'overview-cancel-test', version: '1' });
   const [cancelLeft, cancelRight] = InMemoryTransport.createLinkedPair();
   await interruptedServer.connect(cancelLeft); await interruptedClient.connect(cancelRight);
@@ -214,7 +214,7 @@ test('oversized MCP result requests are capped and paginated without failing the
   await Promise.all(Array.from({ length: 60 }, (_, i) => writeFile(join(root, `file-${String(i).padStart(2, '0')}.txt`), 'needle\n')));
   const seen: RouteRequest[] = [];
   const router = selecting('unknown', seen);
-  const server = createFusionMcpServer({ router, config: loadConfig({}), workspace: new WorkspaceService(root, router) });
+  const server = createFusionMcpServer({ router, config: loadConfig({ FUSION_MCP_PROFILE: 'full' }), workspace: new WorkspaceService(root, router) });
   const client = new Client({ name: 'limit-test', version: '1' });
   const [left, right] = InMemoryTransport.createLinkedPair();
   await server.connect(left); await client.connect(right);
@@ -249,7 +249,7 @@ test('standard overview retains module edges and symbols, scans each source once
   const workspace = new WorkspaceService(root, router);
   const read = t.mock.method(workspace, 'read');
   const scan = t.mock.method(workspace, 'readOverview');
-  const server = createFusionMcpServer({ router, config: loadConfig({}), workspace });
+  const server = createFusionMcpServer({ router, config: loadConfig({ FUSION_MCP_PROFILE: 'full' }), workspace });
   const client = new Client({ name: 'standard-map-test', version: '1' });
   const [left, right] = InMemoryTransport.createLinkedPair();
   await server.connect(left); await client.connect(right);
@@ -288,7 +288,7 @@ test('separate MCP calls can execute concurrently on one connection', { timeout:
     await release.promise;
     return { path, startLine: 1, lines: [{ number: 1, text: path }], nextLine: null, shortenedLines: false };
   });
-  const server = createFusionMcpServer({ router, config: loadConfig({}), workspace });
+  const server = createFusionMcpServer({ router, config: loadConfig({ FUSION_MCP_PROFILE: 'full' }), workspace });
   const client = new Client({ name: 'parallel-test', version: '1' });
   const [left, right] = InMemoryTransport.createLinkedPair();
   await server.connect(left); await client.connect(right);
@@ -309,7 +309,7 @@ test('named tools return stable errors and use the requested workspace root', as
   await writeFile(join(first, 'one.txt'), 'first');
   await writeFile(join(second, 'two.txt'), 'second');
   const router = selecting('unknown', []);
-  const server = createFusionMcpServer({ router, config: loadConfig({}),
+  const server = createFusionMcpServer({ router, config: loadConfig({ FUSION_MCP_PROFILE: 'full' }),
     workspaceFactory: root => new WorkspaceService(root ?? first, router) });
   const client = new Client({ name: 'roots-test', version: '1' });
   const [left, right] = InMemoryTransport.createLinkedPair();
@@ -501,7 +501,7 @@ test('compact MCP and inspection preserve evidence once, order, failures and req
   let reads = 0;
   const original = service.read.bind(service);
   t.mock.method(service, 'read', async (...args: Parameters<typeof service.read>) => { reads++; return original(...args); });
-  const server = createFusionMcpServer({ router, config: loadConfig({}), workspace: service });
+  const server = createFusionMcpServer({ router, config: loadConfig({ FUSION_MCP_PROFILE: 'full' }), workspace: service });
   const client = new Client({ name: 'inspect-test', version: '1' });
   const [left, right] = InMemoryTransport.createLinkedPair();
   await server.connect(left); await client.connect(right);
@@ -576,7 +576,7 @@ test('inspection receipt follows the bytes used for the visible read when source
     return result;
   });
   const evidence = new EvidenceStore();
-  const server = createFusionMcpServer({ router, config: loadConfig({}), workspace: service, evidence });
+  const server = createFusionMcpServer({ router, config: loadConfig({ FUSION_MCP_PROFILE: 'full' }), workspace: service, evidence });
   const client = new Client({ name: 'version-test', version: '1' });
   const [left, right] = InMemoryTransport.createLinkedPair();
   await server.connect(left); await client.connect(right);
@@ -609,7 +609,7 @@ test('Git receipt preserves raw capped stdout bytes and unknown original length'
   assert.equal(expected[32767], 0x9f);
   const router = selecting('unknown', []);
   const evidence = new EvidenceStore();
-  const server = createFusionMcpServer({ router, config: loadConfig({}), workspace: new WorkspaceService(root, router), evidence });
+  const server = createFusionMcpServer({ router, config: loadConfig({ FUSION_MCP_PROFILE: 'full' }), workspace: new WorkspaceService(root, router), evidence });
   const client = new Client({ name: 'git-raw-test', version: '1' });
   const [left, right] = InMemoryTransport.createLinkedPair();
   await server.connect(left); await client.connect(right);
@@ -630,7 +630,7 @@ test('inspection receipts expand full read and search sources despite compact cl
   await writeFile(join(root, 'long.txt'), source);
   const router = selecting('unknown', []);
   const evidence = new EvidenceStore();
-  const server = createFusionMcpServer({ router, config: loadConfig({}), workspace: new WorkspaceService(root, router), evidence });
+  const server = createFusionMcpServer({ router, config: loadConfig({ FUSION_MCP_PROFILE: 'full' }), workspace: new WorkspaceService(root, router), evidence });
   const client = new Client({ name: 'inspect-evidence-test', version: '1' });
   const [left, right] = InMemoryTransport.createLinkedPair();
   await server.connect(left); await client.connect(right);
@@ -655,7 +655,7 @@ test('inspection labels unavailable snapshots without hiding the compact read', 
   const router = selecting('unknown', []);
   const service = new WorkspaceService(root, router);
   t.mock.method(service, 'sourceCaptures', () => []);
-  const server = createFusionMcpServer({ router, config: loadConfig({}), workspace: service });
+  const server = createFusionMcpServer({ router, config: loadConfig({ FUSION_MCP_PROFILE: 'full' }), workspace: service });
   const client = new Client({ name: 'unavailable-test', version: '1' });
   const [left, right] = InMemoryTransport.createLinkedPair();
   await server.connect(left); await client.connect(right);
@@ -671,7 +671,7 @@ test('inspection preserves a listing if evidence storage fails', async t => {
   await writeFile(join(root, 'note.txt'), 'visible');
   const router = selecting('unknown', []);
   class FailingStore extends EvidenceStore { override capture(): never { throw new Error('storage unavailable'); } }
-  const server = createFusionMcpServer({ router, config: loadConfig({}), workspace: new WorkspaceService(root, router), evidence: new FailingStore() });
+  const server = createFusionMcpServer({ router, config: loadConfig({ FUSION_MCP_PROFILE: 'full' }), workspace: new WorkspaceService(root, router), evidence: new FailingStore() });
   const client = new Client({ name: 'storage-failure-test', version: '1' });
   const [left, right] = InMemoryTransport.createLinkedPair();
   await server.connect(left); await client.connect(right);
@@ -695,7 +695,7 @@ test('inspection bounds concurrency and output, and marks queued work cancelled 
     running--;
     return { path, startLine: 1, lines: [{ number: 1, text: 'e'.repeat(3000) }], nextLine: null, shortenedLines: false };
   });
-  const server = createFusionMcpServer({ router, config: loadConfig({}), workspace: service, signal: controller.signal });
+  const server = createFusionMcpServer({ router, config: loadConfig({ FUSION_MCP_PROFILE: 'full' }), workspace: service, signal: controller.signal });
   const client = new Client({ name: 'bounded-test', version: '1' });
   const [left, right] = InMemoryTransport.createLinkedPair();
   await server.connect(left); await client.connect(right);

@@ -1,8 +1,13 @@
 {
   "mcpServers": {
     "fusion": {
-      "command": "fusion-jev",
-      "args": ["stdio"],
+      "command": "npx",
+      "args": [
+        "-y",
+        "--package=fusion-jev-mcp@0.3.1",
+        "fusion-jev",
+        "stdio"
+      ],
       "env": {
         "FUSION_FALLBACK": "host",
         "FUSION_MCP_PROFILE": "assist",

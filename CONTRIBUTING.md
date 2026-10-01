@@ -1,6 +1,6 @@
 # Contributing
 
-Run `npm ci`, `npm run check` and `npm run pack:smoke` with Node 22.12+. Windows, Linux and macOS CI cover the package; local evidence ACL and process cleanup need native Windows verification.
+Run `npm ci`, `npm run check` and `npm run pack:smoke` with Node 22.13+. Windows, Linux and macOS CI cover the package; local evidence ACL and process cleanup need native Windows verification.
 
 Add a failing regression before changing behavior. Preserve the small assist profile and full compatibility profile. Jev may select validated IDs only; it cannot generate code, executable arguments, or outcome claims. Discovered scripts require host review and execution through host permissions. Keep diagnostic bytes, source ranges and omissions recoverable.
 

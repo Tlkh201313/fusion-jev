@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
-import Database from 'better-sqlite3';
+import { Database } from '../src/sqlite.js';
 import { syncBuiltinESMExports } from 'node:module';
 import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -399,7 +399,7 @@ test('a paused committed writer rejects its receipt after another process replac
   await writeFile(clockFile, '1000');
   const script = `
 import fs from 'node:fs';
-import Database from 'better-sqlite3';
+const { Database } = await import(${JSON.stringify(pathToFileURL(join(process.cwd(), 'src/sqlite.ts')).href)});
 const { EvidenceStore } = await import(${JSON.stringify(pathToFileURL(join(process.cwd(), 'src/evidence.ts')).href)});
 const { importResearch } = await import(${JSON.stringify(pathToFileURL(join(process.cwd(), 'src/research.ts')).href)});
 const store = new EvidenceStore({ storageDir: process.env.FUSION_TEST_STORAGE,
@@ -441,7 +441,7 @@ test('crashes before and after transaction commit leave bounded orphan or commit
   const script = `
 import fs from 'node:fs';
 import { syncBuiltinESMExports } from 'node:module';
-import Database from 'better-sqlite3';
+const { Database } = await import(${JSON.stringify(pathToFileURL(join(process.cwd(), 'src/sqlite.ts')).href)});
 const original = fs.renameSync;
 fs.renameSync = (from, to) => { original(from, to); if (process.env.FUSION_TEST_POINT === 'before' && String(to).endsWith('.json')) process.exit(0); };
 syncBuiltinESMExports();
@@ -532,14 +532,11 @@ test('fusion_evidence import and get expose exact bytes, bounded preview and str
   }
   const advertised = descriptor.inputSchema as any;
   assert.equal(advertised.type, 'object');
-  assert.ok(Array.isArray(advertised.oneOf));
-  assert.equal(advertised.oneOf.length, 2);
-  const getBranch = advertised.oneOf.find((branch: any) => branch.properties?.action?.const === 'get');
-  const importBranch = advertised.oneOf.find((branch: any) => branch.properties?.action?.const === 'import');
-  assert.ok(getBranch?.required.includes('id'));
-  assert.ok(importBranch?.required.includes('passage'));
-  assert.equal(getBranch.additionalProperties, false);
-  assert.equal(importBranch.additionalProperties, false);
+  // Claude and Codex reject combinators at the top level of a tool input schema.
+  for (const keyword of ['oneOf', 'anyOf', 'allOf']) assert.equal(advertised[keyword], undefined);
+  assert.deepEqual(advertised.properties.action.enum, ['get', 'import']);
+  assert.ok(advertised.properties.id && advertised.properties.passage);
+  assert.equal(advertised.additionalProperties, false);
 });
 
 test('HTTP sessions share research receipts and assist treats hostile text as data', async t => {

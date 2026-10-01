@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { EvidenceStore } from '../src/evidence.js';
-import Database from 'better-sqlite3';
+import { Database } from '../src/sqlite.js';
 
 const command = { kind: 'command' as const, cwd: process.cwd(), argv: ['node', '-e', ''], channel: 'stdout' as const };
 
@@ -190,7 +190,8 @@ test('stale store cleanup preserves a different in-flight receipt file at the sa
   const current = second.capture({ source: command, bytes: Buffer.from('new') });
   const candidate = JSON.parse(await readFile(join(storageDir, `${current.id}.json`), 'utf8'));
   candidate.receipt.id = old.id;
-  await writeFile(join(storageDir, `${old.id}.json`), JSON.stringify(candidate));
+  // Another store writes receipts privately (0600); an unsafe-permission file would rightly be discarded.
+  await writeFile(join(storageDir, `${old.id}.json`), JSON.stringify(candidate), { mode: 0o600 });
   assert.equal((await first.expand({ id: old.id })).status, 'missing');
   assert.ok((await readdir(storageDir)).includes(`${old.id}.json`));
 });
@@ -238,7 +239,7 @@ test('two processes past initial cleanup cannot grow blocked disk captures beyon
   const gate = join(storageDir, 'release');
   const script = `
 import fs from 'node:fs';
-import Database from 'better-sqlite3';
+const { Database } = await import(${JSON.stringify(pathToFileURL(join(process.cwd(), 'src/sqlite.ts')).href)});
 const { EvidenceStore } = await import(${JSON.stringify(pathToFileURL(join(process.cwd(), 'src/evidence.ts')).href)});
 const store = new EvidenceStore({ storageDir: process.env.FUSION_TEST_STORAGE, maxEntries: 1,
   removeFile: () => { throw new Error('injected access denial'); } });
@@ -485,4 +486,18 @@ test('repairing a previously shared Windows cache discards all old receipts', as
   assert.equal((await reopened.expand({ id: receipt.id })).status, 'missing');
   assert.equal(await readFile(outside, 'utf8'), 'must survive');
   assert.deepEqual((await readdir(storageDir)).filter(name => name.endsWith('.json')), []);
+});
+
+test('a long-lived disk store keeps a bounded in-memory cache', async t => {
+  const storageDir = await mkdtemp(join(tmpdir(), 'fusion-memory-bound-'));
+  t.after(() => rm(storageDir, { recursive: true, force: true }));
+  const server = new EvidenceStore({ storageDir, maxEntries: 2 });
+  const other = new EvidenceStore({ storageDir, maxEntries: 2 });
+  const ids = [];
+  for (let index = 0; index < 6; index++) {
+    ids.push(server.capture({ source: command, bytes: Buffer.from(`server ${index}`) }).id);
+    other.capture({ source: command, bytes: Buffer.from(`other ${index}`) });
+  }
+  assert.ok((server as unknown as { entries: Map<string, unknown> }).entries.size <= 2);
+  assert.equal((await server.expand({ id: ids[0]! })).status, 'missing');
 });

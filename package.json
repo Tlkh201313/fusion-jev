@@ -1,7 +1,19 @@
 {
   "name": "fusion-jev-mcp",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Local coding evidence and guarded official Jev choices for MCP hosts",
+  "keywords": [
+    "mcp",
+    "claude-code",
+    "codex",
+    "claude-plugin",
+    "context",
+    "tokens",
+    "test-output",
+    "evidence",
+    "agent",
+    "developer-tools"
+  ],
   "type": "module",
   "types": "./dist/index.d.ts",
   "license": "MIT",
@@ -14,7 +26,7 @@
     "url": "https://github.com/Tlkh201313/fusion-jev/issues"
   },
   "engines": {
-    "node": ">=22.12.0"
+    "node": ">=22.13.0"
   },
   "bin": {
     "fusion-jev": "dist/cli.js"
@@ -46,6 +58,7 @@
     "benchmark:support": "tsx benchmark/support.ts",
     "benchmark:workflows": "tsx benchmark/workflows.ts",
     "benchmark:live": "node --env-file-if-exists=.env --import tsx examples/live.ts",
+    "overhead": "tsx benchmark/overhead.ts",
     "demo": "tsx examples/workflow.ts",
     "start": "node --env-file-if-exists=.env dist/cli.js stdio",
     "start:http": "node --env-file-if-exists=.env dist/cli.js http",
@@ -59,13 +72,11 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.30.0",
     "ajv": "8.20.0",
-    "better-sqlite3": "^12.11.1",
     "cross-spawn": "^7.0.6",
     "jose": "^6.2.12",
     "zod": "4.6.5"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^9.6.0",
     "@types/cross-spawn": "^6.0.6",
     "@types/node": "26.6.2",
     "tsx": "4.23.15",

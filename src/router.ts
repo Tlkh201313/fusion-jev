@@ -147,7 +147,7 @@ export class FusionRouter {
     }
     if (decision.status === 'selected' || request.strategy === 'jev-only' || caller?.aborted)
       return { decision: caller?.aborted ? host('cancelled') : decision, usage, latencyMs: elapsed(start) };
-    if (request.strategy === 'gpt-only' || (this.config.routing.fallback === 'gpt' && (request.candidates.length > 0 || request.candidates !== undefined))) {
+    if (request.strategy === 'gpt-only' || (this.config.routing.fallback === 'gpt' && request.candidates.length > 0)) {
       const generated = await this.generate(request, caller, deadline);
       usage.push(...generated.usage);
       decision = generated.decision;
@@ -228,10 +228,16 @@ export class FusionRouter {
       breaker.until = 0;
       return value;
     } catch (error) {
-      if (started && abortSource !== 'caller' && !(error instanceof ProviderError && error.code === 'circuit_open')) {
+      // Only outages open the breaker; a rejected or malformed request is not an outage.
+      const transient = !(error instanceof ProviderError) || ['network', 'timeout', 'unavailable', 'rate_limited'].includes(error.code)
+        || (error.code === 'cancelled' && abortSource === 'timeout');
+      if (started && abortSource !== 'caller' && transient) {
         breaker.failures++;
         if (breaker.failures >= this.config.routing.breakerThreshold) breaker.until = this.clock() + this.config.routing.breakerCooldownMs;
       }
+      // The provider sees this controller's abort as a cancellation; report our own timer as a timeout.
+      if (abortSource === 'timeout' && error instanceof ProviderError && error.code === 'cancelled')
+        throw new ProviderError('timeout', error.usage, error.status);
       if (controller.signal.aborted && started && !(error instanceof ProviderError)) {
         const providerConfig = name === 'jev' ? this.config.jev : this.config.gpt;
         throw new ProviderError(caller?.aborted ? 'cancelled' : 'timeout', [{

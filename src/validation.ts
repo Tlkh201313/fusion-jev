@@ -24,9 +24,12 @@ export function compileTools(tools: ToolDefinition[]): Map<string, ValidateFunct
     if (!plainObject(tool) || typeof tool.name !== 'string' || !tool.name.trim() || tool.name === ESCALATE || validators.has(tool.name)
       || typeof tool.description !== 'string' || !plainObject(tool.inputSchema)) return null;
     try {
+      // MCP hosts and zod emit draft 2020-12 $schema URIs; validate the schema body with
+      // the bundled draft instead of rejecting every such tool.
+      const { $schema: _dialect, ...schema } = tool.inputSchema as Record<string, unknown>;
       const ajv = new Ajv({ allErrors: true, strict: false, validateSchema: true });
-      if (!ajv.validateSchema(tool.inputSchema)) return null;
-      validators.set(tool.name, ajv.compile(tool.inputSchema));
+      if (!ajv.validateSchema(schema)) return null;
+      validators.set(tool.name, ajv.compile(schema));
     } catch { return null; }
   }
   return validators;

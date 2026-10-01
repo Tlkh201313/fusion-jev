@@ -1,14 +1,62 @@
 # Fusion Jev
 
-**Keep noisy command output small. Recover the captured evidence when you need it.**
+**Your coding agent sees the error, not 2,000 passing lines, and it can always get every captured byte back.**
 
-Fusion Jev is a local CLI and MCP toolkit for developers using Codex or Claude Code. Batch known repository reads, inspect compact command diagnostics, and recover captured bytes through evidence receipts. Deterministic tools work without a key. Optional official TypeSafe Jev chooses among bounded, validated actions; uncertain work returns to your current host.
+`fusion-jev run -- npm test` runs the command you chose, returns its exact exit status, a compact diagnostic and evidence receipts, and keeps the captured output recoverable. It ships as a CLI, an MCP server and native Claude Code and Codex adapters. Everything works locally without an API key. It complements tools such as [RTK](https://github.com/rtk-ai/rtk): compaction here is reversible through receipts.
 
-This is an independent community integration, not affiliated with TypeSafe. The code is MIT licensed; Jev is an external service. The source repository is [Tlkh201313/fusion-jev](https://github.com/Tlkh201313/fusion-jev). The npm name `fusion-jev-mcp` is provisional and the npm package remains unpublished. Version: 0.3.0. Public CLI: `fusion-jev`.
+| Output (measured on this revision, bytes the host receives) | Native | `fusion-jev run` |
+| --- | ---: | ---: |
+| Failing check: 200 context lines and one TypeScript error | 4,341 B | 985 B |
+| Passing suite: 3,000 lines | 79,890 B | ~900 B |
+| One short line | 5 B | ~890 B, so use `--raw` |
 
-## Try it locally
+These are bytes, not host-reported tokens. Check your own numbers with `fusion-jev gain`.
 
-Requires Git, Node 22.12+ and npm:
+## Install
+
+> The npm package `fusion-jev-mcp` is prepared but **not published yet**. Until it is, use [Try from source](#try-from-source). The commands below are the post-publish path.
+
+```sh
+# Claude Code plugin (MCP tools, session hint, optional auto-wrap)
+/plugin marketplace add Tlkh201313/fusion-jev
+/plugin install fusion-jev@fusion-local
+
+# Or any MCP host
+claude mcp add fusion -- npx -y --package=fusion-jev-mcp fusion-jev stdio
+codex mcp add fusion -- npx -y --package=fusion-jev-mcp fusion-jev stdio
+
+# Try it on one command without installing
+npx -y --package=fusion-jev-mcp fusion-jev run -- npm test
+```
+
+Requires Node 22.13+. There is no native build step. On native Windows, prefix `npx` with `cmd /c` when adding an MCP server by hand.
+
+## Use it
+
+```sh
+fusion-jev run -- npm test               # exit status, compact diagnostic, receipts
+fusion-jev evidence RECEIPT_ID --raw     # recover the captured bytes
+fusion-jev run --raw -- git status       # small output: pass through exactly
+fusion-jev gain                          # what was kept out of context on this machine
+```
+
+The host model receives three MCP tools:
+
+| Tool | Use it for |
+| --- | --- |
+| `fusion_inspect` | Known file reads, literal searches and Git inspections; batch up to eight independent actions. |
+| `fusion_assist` | A short grounded goal when the next bounded inspection is unclear. |
+| `fusion_evidence` | Recover captured detail, with explicit clipping, redaction and expiry information. |
+
+**Auto-wrap (Claude Code, opt-in):** `fusion-jev config auto-wrap on` lets the plugin route simple noisy commands (tests, builds, linters, type checkers) through `fusion-jev run` automatically. It never touches permissions, and anything it doesn't recognize passes through unchanged. See the [Claude adapter](plugin/fusion-jev-claude/README.md).
+
+**Status line:** to see savings continuously at no model-token cost, add this to Claude Code's `settings.json`:
+
+```json
+{ "statusLine": { "type": "command", "command": "fusion-jev statusline" } }
+```
+
+## Try from source
 
 ```sh
 git clone https://github.com/Tlkh201313/fusion-jev.git
@@ -17,56 +65,29 @@ npm ci
 npm run setup
 ```
 
-Setup builds the CLI, creates a private blank provider file outside the repository, and prints exact Codex and Claude connection commands. It preserves existing files and does not change host settings or install a global binary. Use `node dist/cli.js setup --dry-run` to see the commands without creating files.
-
-Try a noisy, deliberately failing command without a key:
+Setup builds the CLI, creates a private blank provider file outside the repository and prints exact Codex and Claude connection commands. It does not change host settings or install a global binary; `node dist/cli.js setup --dry-run` shows the commands only. Try a deliberately failing command:
 
 ```sh
 node dist/cli.js run '--' node -e "for (let i=0;i<200;i++) console.log('unchanged context '+i); console.error('src/example.ts:4:2 - error TS2322: fixture failure'); process.exitCode=2"
 ```
 
-Expect exit code 2, a compact diagnostic, stdout/stderr receipts and recovery commands. The printed `recoverStdoutArgv` contains the exact Node/CLI arguments for your host's execution tool. To recover manually from this source checkout, copy the stdout receipt ID:
+Expect exit code 2, a compact diagnostic, stdout/stderr receipts and recovery commands. `recoverStdoutArgv` contains the exact Node/CLI arguments for your host's execution tool. In PowerShell, quote `'--'`. The [local setup guide](docs/setup.md) covers the first MCP inspection and troubleshooting.
 
-```sh
-node dist/cli.js evidence RECEIPT_ID --raw
-```
+## Optional: Jev routing
 
-Recover before the receipt's ten-minute expiry. The default capture limit is 8 MiB per output stream; the local store retains at most 128 receipts and 32 MiB, so eviction may happen earlier. Check `stdoutTruncated` and `stdoutRedacted`: recovery returns retained bytes, not omitted or redacted content. This small fixture recovers all 200 context lines. The [local setup guide](docs/setup.md) covers the first MCP inspection and troubleshooting. `npm run demo` also offers a keyless scripted routing example; it does not measure Jev quality.
+Set `TYPESAFE_API_KEY` in the private file named by setup to enable official TypeSafe Jev (`https://api.typesafe.ai/v1/systemone`, `jev-latest`; `JEV_API_KEY` is an alias). Jev only selects a validated candidate ID or escalates. It cannot generate executable arguments or grant write permission, and obvious reads never call it. Jev requests may incur TypeSafe charges. A network failure or missing key hands the decision back to your host. See [provider and workspace configuration](docs/configuration.md) and the [TypeSafe API](https://docs.typesafe.ai/api). Fusion Jev is an independent community integration, not affiliated with TypeSafe, OpenAI or Anthropic.
 
-With the default profile, your host receives three tools:
+## Limits
 
-| Tool | Use it for |
-| --- | --- |
-| `fusion_inspect` | Known file reads, literal searches and Git inspections; batch up to eight independent actions. |
-| `fusion_assist` | A short grounded goal when the next bounded inspection is unclear. |
-| `fusion_evidence` | Recover captured detail, with explicit clipping, redaction and expiry information. |
+- Receipts expire after ten minutes. The local store keeps at most 128 receipts and 32 MiB, and capture stops at 8 MiB per stream. Recovery returns the retained bytes: check `stdoutTruncated` and `stdoutRedacted`.
+- Known credential formats are redacted before storage. Redacted bytes cannot be recovered.
+- Fusion does not choose commands, retry side effects or change permissions; the host keeps reasoning, edits and correctness decisions.
+- Byte reductions are not token, bill or speed guarantees. Small outputs grow with receipt overhead.
+- Fixed context per default Claude session is about 5 KB (tool schemas, instructions and the session hint). Measure it with `npm run overhead`.
 
-For example, ask: “Use Fusion to read the first 20 lines of this project's package.json.” An obvious read runs locally and makes no Jev call. The host retains reasoning, edits, permissions and correctness decisions.
+## Library and profiles
 
-## Compact command evidence
-
-The host chooses the exact command and its arguments. The wrapper captures stdout and stderr, summarizes supported diagnostics, returns the child's exit status, and provides receipts for recovery:
-
-```sh
-node dist/cli.js run '--' node -e "console.log('example output')"
-node dist/cli.js evidence RECEIPT_ID --raw
-```
-
-After installing a prepared local package, the equivalent command starts with `fusion-jev`. In PowerShell quote `'--'` so it reaches the CLI. `run --raw` preserves small output directly and creates no persistent receipt. Fusion does not intercept native tools, choose arbitrary shell commands, or retry side effects. Evidence is bounded and expiring; recovery returns the bytes retained after disclosed redaction and capture limits.
-
-## Optional Jev choices
-
-Set `TYPESAFE_API_KEY` in the private file named by setup to enable official TypeSafe Jev. The default is `https://api.typesafe.ai/v1/systemone` with `jev-latest`; `JEV_API_KEY` is a documented compatibility alias. TeamoRouter credentials are not used. [Provider and workspace configuration](docs/configuration.md), [official TypeSafe API](https://docs.typesafe.ai/api).
-
-Jev sees the bounded state and choice descriptions supplied to it. It may select a validated candidate ID or escalate; it cannot generate executable arguments or grant permission to write. Confidence, probability and margin are separate uncalibrated gates. A network failure or missing key returns uncertain decisions to the host. Deterministic local reads do not send repository contents to Jev.
-
-Jev requests may incur TypeSafe charges. The MCP CLI uses the current host for fallback and makes no OpenAI or Anthropic API call. Offline fixtures and bytes estimates verify orchestration and output behavior; they do not establish model quality, universal speed improvements or subscription savings.
-
-## Local hosts and library
-
-Start with the absolute Node/CLI commands printed by setup. Optional [Codex adapter](plugin/fusion-jev/README.md) and [Claude Code adapter](plugin/fusion-jev-claude/README.md) add native guidance. They use distinct host manifest formats. No global instructions, permissions, other plugins or skills are rewritten.
-
-The TypeScript source also exports `FusionRouter`, `JevProvider`, `FusionExecutor`, workspace services and evidence contracts. `examples/workflow.ts` demonstrates a bounded workflow in the source checkout. Applications explicitly register execution handlers and authorization; an MCP routing decision alone executes nothing. `FUSION_MCP_PROFILE=full` exposes the additional routing and inspection surface for existing integrations. HTTP/OAuth compatibility remains in source; hosted setup is outside this release's front door.
+The TypeScript package exports `FusionRouter`, `JevProvider`, `FusionExecutor`, workspace services and evidence contracts; `examples/workflow.ts` shows a bounded workflow. `FUSION_MCP_PROFILE=full` exposes the additional routing and inspection tools for existing integrations. HTTP/OAuth compatibility remains in source.
 
 ## Develop and evaluate
 
@@ -75,9 +96,8 @@ npm run typecheck
 npm test
 npm run build
 npm run benchmark
+npm run overhead
 npm run pack:smoke
 ```
 
-Tests run serially with credentials cleared. The evidence backend uses `better-sqlite3`; installation needs a supported Node/platform prebuild or the dependency's native build prerequisites. CI is configured for Windows, Linux and macOS; a configured matrix is not a claim that every platform has been verified for this source revision.
-
-Read [market fit](docs/market-fit.md), [comparisons](docs/comparison.md) and the [launch plan](docs/launch-plan.md) for target users, alternatives and measurements still needed. [Contributing](CONTRIBUTING.md), [security](SECURITY.md), [release notes](CHANGELOG.md), [license](LICENSE).
+Tests run serially with credentials cleared. The evidence backend uses Node's built-in `node:sqlite`. CI covers Windows, Linux and macOS. See [market fit](docs/market-fit.md), [comparisons](docs/comparison.md) and the [launch plan](docs/launch-plan.md); also [contributing](CONTRIBUTING.md), [security](SECURITY.md), [release notes](CHANGELOG.md) and the [license](LICENSE).

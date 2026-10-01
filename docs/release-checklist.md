@@ -25,7 +25,7 @@ npm run setup
 For a prepared npm tarball, users can explicitly choose a local installation:
 
 ```sh
-npm install -g /absolute/path/to/fusion-jev-mcp-0.3.0.tgz
+npm install -g /absolute/path/to/fusion-jev-mcp-0.3.1.tgz
 fusion-jev setup
 ```
 

@@ -2,8 +2,9 @@ import { createHash, randomUUID } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
-import Database from 'better-sqlite3';
+import { Database } from './sqlite.js';
 import { safeWorkspaceBytes } from './workspace.js';
+import { isSecretName, redactSecrets } from './secrets.js';
 
 export type EvidenceSource =
   | { kind: 'workspace'; root: string; path: string }
@@ -24,7 +25,7 @@ const MAX_CAPTURE = 8 * 1024 * 1024;
 const MAX_PAGE = 64 * 1024;
 const DEFAULT_PAGE = 16 * 1024;
 const MAX_DISK_FILE = 12 * 1024 * 1024;
-const EXCLUDED = new Set(['.git', 'node_modules', 'dist', '.next', '.ssh', '.aws', '.azure', '.gnupg', '.codex', '.npmrc']);
+const EXCLUDED = new Set(['.git', 'node_modules', 'dist', '.next']);
 const hash = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
 type ResearchSource = Extract<EvidenceSource, { kind: 'research' }>;
 function sameResearchSource(left: ResearchSource, right: ResearchSource): boolean {
@@ -127,17 +128,13 @@ if ($isDirectory) {
 function redactKnownSecrets(input: Buffer): { bytes: Buffer; redacted: boolean } {
   // Decode with replacement for pattern detection. If nothing matches, return the untouched raw bytes.
   const text = new TextDecoder('utf-8').decode(input);
-  const safe = text
-    .replace(/^(\s*(?:TYPESAFE_API_KEY|JEV_API_KEY|TEAMOROUTER_API_KEY|OPENAI_API_KEY|FUSION_HTTP_BEARER_TOKEN)\s*=\s*)[^\r\n]+/gim, '$1[REDACTED]')
-    .replace(/^(\s*Authorization\s*:\s*Bearer\s+)\S+/gim, '$1[REDACTED]')
-    .replace(/("(?:TYPESAFE_API_KEY|JEV_API_KEY|TEAMOROUTER_API_KEY|OPENAI_API_KEY|FUSION_HTTP_BEARER_TOKEN)"\s*[:=]\s*")(?:\\.|[^"\\])*(")/gi, '$1[REDACTED]$2')
-    .replace(/('(?:TYPESAFE_API_KEY|JEV_API_KEY|TEAMOROUTER_API_KEY|OPENAI_API_KEY|FUSION_HTTP_BEARER_TOKEN)'\s*[:=]\s*')(?:\\.|[^'\\])*(')/gi, '$1[REDACTED]$2');
+  const safe = redactSecrets(text);
   return { bytes: safe === text ? input : Buffer.from(safe), redacted: safe !== text };
 }
 
 function canonicalWorkspace(root: string, path: string): string {
   if (!path || isAbsolute(path) || path.includes('\0') || path.split(/[\\/]/).some(part => {
-    const lower = part.toLowerCase(); return EXCLUDED.has(lower) || lower === '.env' || lower.startsWith('.env.');
+    return EXCLUDED.has(part.toLowerCase()) || isSecretName(part);
   })) throw new Error('Invalid workspace path');
   const canonicalRoot = realpathSync(root);
   const candidate = resolve(canonicalRoot, path);
@@ -145,7 +142,7 @@ function canonicalWorkspace(root: string, path: string): string {
   const actual = realpathSync(candidate);
   if (actual !== canonicalRoot && !actual.startsWith(canonicalRoot + sep)) throw new Error('Invalid workspace path');
   if (relative(canonicalRoot, actual).split(/[\\/]/).some(part => {
-    const lower = part.toLowerCase(); return EXCLUDED.has(lower) || lower === '.env' || lower.startsWith('.env.');
+    return EXCLUDED.has(part.toLowerCase()) || isSecretName(part);
   })) throw new Error('Invalid workspace path');
   return actual;
 }
@@ -287,7 +284,7 @@ export class EvidenceStore {
     };
     const entry = { receipt, bytes, sourceHash, canonicalPath, order: ++this.nextOrder };
     if (this.storageDir) {
-      this.reserveDiskReceipt(receipt);
+      this.reserveWithRetry(receipt);
       const file = join(this.storageDir, receipt.id + '.json');
       const temporary = join(this.storageDir, receipt.id + '.tmp');
       try {
@@ -301,11 +298,11 @@ export class EvidenceStore {
       }
     }
     this.entries.set(receipt.id, entry);
-    if (!this.storageDir) this.enforceCapacity();
+    if (!this.storageDir) this.enforceCapacity(); else this.trimMemoryCache();
     return structuredClone(receipt);
   }
 
-  private withProvenanceDb<T>(work: (db: Database.Database) => T): T {
+  private withProvenanceDb<T>(work: (db: Database) => T): T {
     const db = new Database(join(this.storageDir!, 'research-provenance.sqlite'));
     try {
       db.pragma('busy_timeout = 5000');
@@ -325,7 +322,7 @@ export class EvidenceStore {
       throw new Error('Evidence receipt metadata corrupt');
   }
 
-  private assertUniqueDiskGeneration(db: Database.Database): void {
+  private assertUniqueDiskGeneration(db: Database): void {
     // Capture IDs are generated internally with randomUUID. A repeated ID across lifecycle
     // tables is an impossible API state; preserve every claim rather than guessing ownership.
     const collision = db.prepare(`SELECT id FROM (
@@ -351,7 +348,7 @@ export class EvidenceStore {
       order: row?.sequence ?? disk.order ?? info.mtimeMs };
   }
 
-  private removeReceiptRows(db: Database.Database, ids: string[]): void {
+  private removeReceiptRows(db: Database, ids: string[]): void {
     for (const id of ids) {
       db.prepare('INSERT INTO cleanup_pending (id, sha256, storedBytes, expiresAt) SELECT id, sha256, storedBytes, expiresAt FROM receipts WHERE id = ?').run(id);
       db.prepare('DELETE FROM provenance WHERE id = ?').run(id);
@@ -426,6 +423,20 @@ export class EvidenceStore {
     if (morePending) throw new Error('Evidence bounded storage cleanup requires another sweep');
   }
 
+  // Another process's in-flight capture holds a slot only until it commits, after which
+  // this reservation can evict it. Wait briefly instead of failing the race outright.
+  private reserveWithRetry(receipt: EvidenceReceipt): void {
+    const deadline = Date.now() + 2000;
+    const pause = new Int32Array(new SharedArrayBuffer(4));
+    for (;;) {
+      try { this.reserveDiskReceipt(receipt); return; }
+      catch (error) {
+        if (!(error instanceof Error) || error.message !== 'Evidence bounded storage admission is full' || Date.now() >= deadline) throw error;
+        Atomics.wait(pause, 0, 0, 10);
+      }
+    }
+  }
+
   private reserveDiskReceipt(receipt: EvidenceReceipt): void {
     const removed = this.withProvenanceDb(db => db.transaction(() => {
       this.assertUniqueDiskGeneration(db);
@@ -481,7 +492,7 @@ export class EvidenceStore {
     }).immediate());
   }
 
-  private pruneDiskRows(db: Database.Database): string[] {
+  private pruneDiskRows(db: Database): string[] {
     const removed: string[] = [];
     const expired = db.prepare('SELECT sequence, id, sha256, storedBytes, expiresAt FROM receipts WHERE expiresAt <= ?')
       .all(this.clock()) as ReceiptRow[];
@@ -713,7 +724,7 @@ export class EvidenceStore {
       this.validateReceiptRow(row);
       if (row.expiresAt <= this.clock()) { this.delete(input.id); return { status: 'expired', id: input.id }; }
       if (!entry || entry.receipt.sha256 !== row.sha256 || entry.receipt.expiresAt !== row.expiresAt) {
-        try { entry = this.readDiskEntry(input.id, row); this.entries.set(input.id, entry); }
+        try { entry = this.readDiskEntry(input.id, row); this.entries.set(input.id, entry); this.trimMemoryCache(); }
         catch { this.delete(input.id); return { status: 'missing', id: input.id }; }
       }
     }
@@ -748,6 +759,23 @@ export class EvidenceStore {
       this.removeReceiptFiles([id]);
     }
     this.entries.delete(id);
+  }
+
+  // Disk mode: the receipts index is authoritative and expand() rereads files, so memory
+  // is only a cache. Bound it so a long-lived server cannot keep buffers for receipts
+  // that other processes already evicted.
+  private trimMemoryCache(): void {
+    const now = this.clock();
+    let total = 0;
+    for (const [id, entry] of this.entries) {
+      if (entry.receipt.expiresAt <= now) this.entries.delete(id);
+      else total += entry.bytes.length;
+    }
+    for (const [id, entry] of this.entries) {
+      if (this.entries.size <= this.maxEntries && total <= this.maxTotalBytes) break;
+      this.entries.delete(id);
+      total -= entry.bytes.length;
+    }
   }
 
   private enforceCapacity(): void {

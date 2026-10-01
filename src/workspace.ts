@@ -1,10 +1,11 @@
 import { constants } from 'node:fs';
 import { open, readdir, realpath, stat } from 'node:fs/promises';
 import { accessSync, existsSync, lstatSync, readFileSync, realpathSync, statSync } from 'node:fs';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { delimiter, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { FusionExecutor, type ExecutionResult } from './executor.js';
+import { isSecretName, redactTokens, SECRET_GLOBS } from './secrets.js';
 import type { Candidate, RouteRequest, RouteResult, ToolDefinition } from './types.js';
 
 export interface WorkspaceRequest { task: string; path?: string; query?: string; maxResults?: number }
@@ -24,18 +25,37 @@ const MAX_LINE_CHARS = 2000;
 const MAX_READ_CHARS = 24_000;
 const MAX_READ_FILE_BYTES = 8 * 1024 * 1024;
 const MAX_GIT_BYTES = 32 * 1024;
-const EXCLUDED = new Set(['.git', 'node_modules', 'dist', '.next', '.ssh', '.aws', '.azure', '.gnupg', '.codex', '.npmrc', '.superpowers']);
+const EXCLUDED = new Set(['.git', 'node_modules', 'dist', '.next', '.superpowers']);
 
 function excludedName(name: string): boolean {
   const lower = name.toLowerCase();
-  return EXCLUDED.has(lower) || lower === '.env' || lower.startsWith('.env.');
+  return EXCLUDED.has(lower) || isSecretName(lower);
 }
 
 // Keep the caller's scope literal while applying the same exclusions as file
 // traversal. A global --literal-pathspecs flag would disable exclusion magic.
 function gitPathspecs(scope: string): string[] {
-  return [`:(literal)${scope}`, ...[...EXCLUDED, '.env', '.env.*'].flatMap(name =>
+  return [`:(literal)${scope}`, ...[...EXCLUDED, ...SECRET_GLOBS].flatMap(name =>
     [`:(exclude,icase,glob)**/${name}`, `:(exclude,icase,glob)**/${name}/**`])];
+}
+
+// Repository-local config (including archives with a crafted .git/config) can name
+// filter drivers that Git runs during status/diff. Blank every local/worktree driver
+// so a read-only inspection never executes repository-supplied commands. Reading
+// config itself executes nothing.
+function gitFilterOverrides(executable: string, repositoryArgs: string[], cwd: string): string[] {
+  const listed = spawnSync(executable, [...repositoryArgs, 'config', '--show-scope', '--null', '--name-only', '--get-regexp', '^filter\\.'],
+    { cwd, windowsHide: true, encoding: 'utf8', timeout: 5000, env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' } });
+  if (listed.error || listed.status !== 0 && listed.status !== 1) throw new WorkspaceError('GIT_FAILED', 'Git configuration cannot be safely inspected');
+  const fields = (listed.stdout ?? '').split('\0');
+  const names = new Set<string>();
+  for (let index = 0; index + 1 < fields.length; index += 2) {
+    const [scope, key] = [fields[index], fields[index + 1]!];
+    const match = /^filter\.(.+)\.[^.]+$/s.exec(key);
+    if (match && scope !== 'system' && scope !== 'global') names.add(match[1]!);
+  }
+  return [...names].flatMap(name => ['clean', 'smudge', 'process'].flatMap(key => ['-c', `filter.${name}.${key}=`])
+    .concat(['-c', `filter.${name}.required=false`]));
 }
 
 function gitExecutable(root: string): string {
@@ -296,7 +316,7 @@ export class WorkspaceService {
     let chars = 0;
     let nextLine: number | null = null;
     let shortenedLines = false;
-      for (const line of textLines(content)) {
+      for (const line of textLines(redactTokens(content))) {
         checkSignal(signal);
         number++;
         if (number < startLine) continue;
@@ -389,7 +409,7 @@ export class WorkspaceService {
     const target = await this.resolvePath(path);
     const buffer = await safeWorkspaceBytes(this.root, target, signal);
     const truncated = buffer.length > MAX_READ_BYTES;
-    const content = decodeText(buffer.subarray(0, MAX_READ_BYTES), truncated);
+    const content = redactTokens(decodeText(buffer.subarray(0, MAX_READ_BYTES), truncated));
     return { path: this.outputPath(target), content, truncated };
   }
 
@@ -454,7 +474,7 @@ export class WorkspaceService {
         content = decodeText(raw, false);
       }
       catch { skippedFiles++; continue; }
-      const lines = content.split(/\r\n|\n|\r/);
+      const lines = redactTokens(content).split(/\r\n|\n|\r/);
       for (const [index, line] of lines.entries()) {
         if (!queries.some(q => line.includes(q))) continue;
         if (matchedLines++ < offset) continue;
@@ -527,11 +547,13 @@ export class WorkspaceService {
         }
       }
     }
-    const operation = command === 'status' ? ['status', '--short', '--untracked-files=normal']
-      : command === 'diff' ? ['diff', '--no-ext-diff', '--no-textconv', '--submodule=short', ...(options.staged ? ['--cached'] : [])]
+    const operation = command === 'status' ? ['status', '--short', '--untracked-files=normal', '--ignore-submodules=dirty']
+      : command === 'diff' ? ['diff', '--no-ext-diff', '--no-textconv', '--submodule=short', '--ignore-submodules=dirty', ...(options.staged ? ['--cached'] : [])]
         : ['log', '-5', '--oneline', '--no-show-signature'];
-    const args = [...gitRepositoryArgs(this.root), '-c', 'core.fsmonitor=false', '--no-pager', ...operation, '--', ...gitPathspecs(options.path ?? '.')];
     const executable = gitExecutable(this.root);
+    const repositoryArgs = gitRepositoryArgs(this.root);
+    const filters = command === 'log' ? [] : gitFilterOverrides(executable, repositoryArgs, this.root);
+    const args = [...repositoryArgs, '-c', 'core.fsmonitor=false', ...filters, '--no-pager', ...operation, '--', ...gitPathspecs(options.path ?? '.')];
     let output: { text: string; truncated: boolean; bytes: Buffer };
     try { output = await new Promise<{ text: string; truncated: boolean; bytes: Buffer }>((resolve, reject) => {
       const child = spawn(executable, args, { cwd: this.root, windowsHide: true,
@@ -551,7 +573,7 @@ export class WorkspaceService {
         settled = true; clearTimeout(timeout); signal.removeEventListener('abort', abort);
         if (signal.aborted) reject(abortError(signal));
         else if (error || timedOut) reject(error ?? new WorkspaceError('TIMEOUT', 'Git command timed out'));
-        else { const bytes = Buffer.concat(chunks); resolve({ text: bytes.toString('utf8'), truncated, bytes }); }
+        else { const bytes = Buffer.concat(chunks); resolve({ text: redactTokens(bytes.toString('utf8')), truncated, bytes }); }
       };
       child.stdout.on('data', (chunk: Buffer) => {
         if (truncated) return;
