@@ -15,11 +15,11 @@
     "logo": "./assets/logo.png",
     "logoDark": "./assets/logo.png",
     "shortDescription": "Grounded code evidence with bounded Jev choices.",
-    "longDescription": "Try Fusion for repository inspection and source-linked evidence. Jev selects only among bounded prebuilt actions when needed. Codex keeps reasoning, edits, commands, web research and correctness decisions. A local Fusion CLI or private MCP connection supplies the tools.",
+    "longDescription": "Try Fusion for repository inspection and source-linked evidence. Jev selects only among bounded prebuilt actions when needed. Codex keeps reasoning, edits, commands, web research and correctness decisions. The adapter launches the published fusion-jev MCP server, pinned to its version, through npx.",
     "developerName": "Fusion contributors",
     "category": "Productivity",
     "capabilities": ["Read"],
-    "defaultPrompt": ["Try Fusion first for grounded repository inspection: fusion_assist for a bounded task, fusion_inspect for known reads, and fusion_evidence for exact bytes or attributed host research. Do not call Jev for obvious reads.", "Codex owns reasoning, edits, command choice, permissions, research and correctness. Run chosen commands through npx -y fusion-jev run -- program argv... (or fusion-jev run if installed globally); use RTK/native tools when unavailable or unsupported. Continue in Codex on escalation."]
+    "defaultPrompt": ["Use Fusion when output would be long or noisy or several files are involved: fusion_inspect batches known reads, searches and Git evidence; fusion_assist takes a bounded task; fusion_evidence expands receipts or imports attributed host research. Use native tools for a single small read; do not call Jev for obvious reads.", "Codex owns reasoning, edits, command choice, permissions, research and correctness. Run tests, builds, lint, installs and log commands through fusion-jev run -- program argv... if installed globally, else npx -y fusion-jev@0.3.0 run -- program argv... (in PowerShell write '--'); use RTK/native tools when Fusion is unavailable or unsupported. Continue in Codex on escalation."]
   },
   "mcpServers": "./.mcp.json"
 }

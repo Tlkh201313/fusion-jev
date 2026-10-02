@@ -164,10 +164,14 @@ export async function safeWorkspaceBytes(root: string, target: string, signal: A
     const after = await realpath(target);
     allowed(after);
     const opened = await file.stat();
-    const current = await stat(after);
-    // Node 22.12 on Windows reports dev 0 for path-based stat but the volume serial for a handle; only trust dev when both are real.
-    const sameDevice = opened.dev === current.dev || process.platform === 'win32' && (opened.dev === 0 || current.dev === 0);
-    if (before !== after || !opened.isFile() || !current.isFile() || !sameDevice || opened.ino !== current.ino)
+    let current = await stat(after);
+    // Node 22.12 on Windows reports dev 0 for path-based stat but the volume serial for a handle; re-open the path so
+    // both sides come from handles instead of skipping the device comparison.
+    if (process.platform === 'win32' && opened.dev !== current.dev && (opened.dev === 0 || current.dev === 0)) {
+      const reopened = await open(after, constants.O_RDONLY);
+      try { current = await reopened.stat(); } finally { await reopened.close(); }
+    }
+    if (before !== after || !opened.isFile() || !current.isFile() || opened.dev !== current.dev || opened.ino !== current.ino)
       throw new WorkspaceError('INVALID_PATH', 'Workspace path changed during access');
     if (opened.size > maxBytes) throw new WorkspaceError('FILE_TOO_LARGE', 'File exceeds the read limit');
     const chunks: Buffer[] = [];

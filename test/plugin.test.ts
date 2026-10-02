@@ -30,8 +30,8 @@ test('Claude SessionStart gives short Fusion guidance without overriding permiss
   assert.equal(result.status, 0, result.stderr);
   const output = JSON.parse(result.stdout);
   assert.equal(output.hookSpecificOutput.hookEventName, 'SessionStart');
-  assert.match(output.hookSpecificOutput.additionalContext, /npx -y fusion-jev run/, 'works without a global install');
-  assert.match(output.hookSpecificOutput.additionalContext, /fusion-jev run if installed globally/);
+  assert.match(output.hookSpecificOutput.additionalContext, /npx -y fusion-jev@\d+\.\d+\.\d+ run/, 'pinned, works without a global install');
+  assert.match(output.hookSpecificOutput.additionalContext, /fusion-jev run -- program argv\.\.\. if installed globally/);
   assert.match(output.hookSpecificOutput.additionalContext, /Claude/);
   assert.ok(Buffer.byteLength(result.stdout) < 1200);
   assert.equal(output.hookSpecificOutput.permissionDecision, undefined);
@@ -64,6 +64,7 @@ test('sync-version --check passes for the repository and rejects a mismatched ta
 test('host-facing command guidance works without a global fusion-jev binary', () => {
   for (const manifest of ['plugin/fusion-jev/plugin.json', 'plugin/fusion-jev/.codex-plugin/plugin.json']) {
     const prompt = JSON.stringify(readJson(manifest));
-    assert.match(prompt, /npx -y fusion-jev run -- program argv/, manifest);
+    assert.match(prompt, /npx -y fusion-jev@\d+\.\d+\.\d+ run -- program argv/, manifest);
+    assert.match(prompt, /fusion-jev run -- program argv\.\.\. if installed globally/, manifest);
   }
 });

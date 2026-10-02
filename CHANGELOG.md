@@ -6,7 +6,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Changed
 
-- Renamed the npm package from `fusion-jev-mcp` to `fusion-jev`, and the Claude Code marketplace from `fusion-local` to `fusion-jev`. The binary is `fusion-jev`; the on-disk configuration and evidence directory name stays `fusion-jev-mcp`.
+- Renamed the npm package from `fusion-jev-mcp` to `fusion-jev`, and the Claude Code marketplace from `fusion-local` to `fusion-jev`. The binary is `fusion-jev`; the on-disk configuration and evidence directory name stays `fusion-jev-mcp`. Existing `fusion-jev@fusion-local` installs do not update across the rename: run `/plugin uninstall fusion-jev@fusion-local`, then add this marketplace and `/plugin install fusion-jev@fusion-jev`.
 - Claude Code and Codex plugins now launch the server with `npx -y fusion-jev stdio`, so no prior global install is needed.
 - Rewrote the README around a quick install, a before/after example, a how-it-works diagram, a glossary, an FAQ and a single consolidated Limits section.
 

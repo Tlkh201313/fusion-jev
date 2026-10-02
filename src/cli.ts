@@ -89,8 +89,11 @@ async function runCli(args: string[]): Promise<void> {
       process.stdout.write(`termination=${result.termination} exitCode=${result.exitCode ?? 'null'} stdout=${result.stdout.id} stdoutTruncated=${result.stdout.truncated} stdoutRedacted=${result.stdout.redacted} stdoutStoredBytes=${result.stdout.storedBytes} stdoutOriginalBytes=${result.stdout.originalBytes ?? 'null'} stderr=${result.stderr.id} stderrTruncated=${result.stderr.truncated} stderrRedacted=${result.stderr.redacted} stderrStoredBytes=${result.stderr.storedBytes} stderrOriginalBytes=${result.stderr.originalBytes ?? 'null'} durationMs=${Math.round(result.durationMs)} cleanupFailed=${Boolean(result.cleanupFailed)}\n`);
       process.stdout.write(renderChannelSummary(stdout));
       process.stderr.write(renderChannelSummary(stderr));
-      // npx form works with or without a global install; the Argv lines below are the exact-path alternative.
-      process.stdout.write(`recoverStdout=npx -y fusion-jev evidence ${result.stdout.id} --raw\nrecoverStderr=npx -y fusion-jev evidence ${result.stderr.id} --raw\n`);
+      // Name the copy that wrote the receipt: the pinned npx form when running from the npx cache, else the installed bin.
+      // The Argv lines below are the exact-path alternative.
+      const recover = fileURLToPath(import.meta.url).split(/[\\/]/).includes('_npx')
+        ? `npx -y fusion-jev@${JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version} evidence` : 'fusion-jev evidence';
+      process.stdout.write(`recoverStdout=${recover} ${result.stdout.id} --raw\nrecoverStderr=${recover} ${result.stderr.id} --raw\n`);
       process.stdout.write(`recoverStdoutArgv=${JSON.stringify([process.execPath, fileURLToPath(import.meta.url), 'evidence', result.stdout.id, '--raw'])}\nrecoverStderrArgv=${JSON.stringify([process.execPath, fileURLToPath(import.meta.url), 'evidence', result.stderr.id, '--raw'])}\n`);
     }
     process.exitCode = result.termination === 'exit' ? result.exitCode ?? 1 :

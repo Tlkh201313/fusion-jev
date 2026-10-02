@@ -85,14 +85,18 @@ function Protect-Item([string]$item, [bool]$isDir) {
 $wasTrusted = Test-PrivateAcl $target $isDirectory
 if ($isDirectory) {
   foreach ($item in [System.IO.Directory]::EnumerateFiles($target, '*', [System.IO.SearchOption]::TopDirectoryOnly)) {
-    try {
-      if (([System.IO.File]::GetAttributes($item) -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) { $wasTrusted = $false }
-      elseif (-not (Test-PrivateAcl $item $false)) { $wasTrusted = $false }
-    } catch {
-      # Another process's SQLite journal files come and go; a file that vanished (even if recreated) is not a failure.
-      $inner = if ($_.Exception.InnerException) { $_.Exception.InnerException } else { $_.Exception }
-      $vanished = $inner -is [System.IO.FileNotFoundException] -or $inner -is [System.IO.DirectoryNotFoundException]
-      if (-not $vanished -and [System.IO.File]::Exists($item)) { throw }
+    for ($attempt = 0; $attempt -lt 3; $attempt++) {
+      try {
+        if (([System.IO.File]::GetAttributes($item) -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) { $wasTrusted = $false }
+        elseif (-not (Test-PrivateAcl $item $false)) { $wasTrusted = $false }
+        break
+      } catch {
+        # Another process's SQLite journal files come and go: skip a file that is gone, re-check one that was recreated.
+        $inner = if ($_.Exception.InnerException) { $_.Exception.InnerException } else { $_.Exception }
+        $vanished = $inner -is [System.IO.FileNotFoundException] -or $inner -is [System.IO.DirectoryNotFoundException]
+        if (-not [System.IO.File]::Exists($item)) { break }
+        if (-not $vanished -or $attempt -ge 2) { throw }
+      }
     }
   }
 }
@@ -107,13 +111,17 @@ if ($isDirectory) {
     }
   }
   foreach ($item in [System.IO.Directory]::EnumerateFiles($target, '*', [System.IO.SearchOption]::TopDirectoryOnly)) {
-    try {
-      if (([System.IO.File]::GetAttributes($item) -band [System.IO.FileAttributes]::ReparsePoint) -eq 0) { Protect-Item $item $false }
-    } catch {
-      # Another process's SQLite journal files come and go; a file that vanished (even if recreated) is not a failure.
-      $inner = if ($_.Exception.InnerException) { $_.Exception.InnerException } else { $_.Exception }
-      $vanished = $inner -is [System.IO.FileNotFoundException] -or $inner -is [System.IO.DirectoryNotFoundException]
-      if (-not $vanished -and [System.IO.File]::Exists($item)) { throw }
+    for ($attempt = 0; $attempt -lt 3; $attempt++) {
+      try {
+        if (([System.IO.File]::GetAttributes($item) -band [System.IO.FileAttributes]::ReparsePoint) -eq 0) { Protect-Item $item $false }
+        break
+      } catch {
+        # Another process's SQLite journal files come and go: skip a file that is gone, re-protect one that was recreated.
+        $inner = if ($_.Exception.InnerException) { $_.Exception.InnerException } else { $_.Exception }
+        $vanished = $inner -is [System.IO.FileNotFoundException] -or $inner -is [System.IO.DirectoryNotFoundException]
+        if (-not [System.IO.File]::Exists($item)) { break }
+        if (-not $vanished -or $attempt -ge 2) { throw }
+      }
     }
   }
 }

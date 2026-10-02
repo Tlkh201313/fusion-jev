@@ -22,6 +22,14 @@ export function readPackageVersion() {
 
 const jsonVersion = /("version"\s*:\s*")[^"]*(")/g;
 const mcpPin = /("fusion-jev)(?:@[^"]*)?(")/;
+const promptPin = /(npx -y fusion-jev@)[^\s`"]+/g;
+
+// Host guidance that names the pinned `npx -y fusion-jev@<version> run` command: path -> expected pin count.
+const promptPins = {
+  'plugin/fusion-jev/plugin.json': 1,
+  'plugin/fusion-jev/.codex-plugin/plugin.json': 1,
+  'plugin/fusion-jev-claude/skills/assist/SKILL.md': 1,
+};
 
 // path -> [expected replacement count, rewrite(text, version)]
 function targets(version) {
@@ -33,6 +41,7 @@ function targets(version) {
     'plugin/fusion-jev-claude/.claude-plugin/plugin.json': versionField(1),
     'plugin/fusion-jev/.mcp.json': [1, text => text.replace(mcpPin, `$1@${version}$2`)],
     'plugin/fusion-jev-claude/.mcp.json': [1, text => text.replace(mcpPin, `$1@${version}$2`)],
+    'plugin/fusion-jev-claude/skills/assist/SKILL.md': [promptPins['plugin/fusion-jev-claude/skills/assist/SKILL.md'], text => text],
     'src/mcp.ts': [1, text => text.replace(/(title: 'Fusion Jev', version: ')[^']*(')/, `$1${version}$2`)],
   };
 }
@@ -47,9 +56,13 @@ export function syncVersions({ write }) {
   const changed = [];
   for (const [path, [count, rewrite]] of Object.entries(targets(version))) {
     const before = read(path);
-    const pattern = path.endsWith('.mcp.json') ? mcpPin : path === 'src/mcp.ts' ? /title: 'Fusion Jev', version: '/ : jsonVersion;
+    const pattern = path.endsWith('.mcp.json') ? mcpPin : path.endsWith('SKILL.md') ? promptPin : path === 'src/mcp.ts' ? /title: 'Fusion Jev', version: '/ : jsonVersion;
     if (occurrences(before, pattern) !== count) problems.push(`${path}: expected ${count} version field(s)`);
-    const after = rewrite(before);
+    let after = rewrite(before);
+    if (path in promptPins) {
+      if (!path.endsWith('SKILL.md') && occurrences(before, promptPin) !== promptPins[path]) problems.push(`${path}: expected ${promptPins[path]} pinned npx command(s)`);
+      after = after.replace(promptPin, `$1${version}`);
+    }
     if (after !== before) {
       changed.push(path);
       if (write) writeFileSync(join(root, path), after);

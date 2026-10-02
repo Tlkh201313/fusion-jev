@@ -284,8 +284,9 @@ export function createFusionMcpServer({ router, config, workspace, workspaceFact
   const workspaceHint = workspace ? 'This server has a fixed workspace; omit root.'
     : workspaceFactory ? 'Use an exact approved absolute root; configure FUSION_WORKSPACE_ROOT or FUSION_WORKSPACE_ALLOWED_ROOTS first. Use path for subdirectories.' : '';
   const hasWorkspace = Boolean(workspace || workspaceFactory);
-  const server = new McpServer({ name: 'fusion-jev', title: 'Fusion Jev', version: '0.3.0' }, {
-    instructions: `Prefer Fusion for supported inspection: assist for short tasks, inspect for known operations, evidence for expansion. Jev selects validated IDs only. Host owns reasoning, edits, command authorization and correctness. Run chosen commands through npx -y fusion-jev run -- program argv... (or fusion-jev run if installed globally) by default (--raw for small exact output; quote '--' in PowerShell). Escalate here; RTK/native tools are fallback. ${hasWorkspace ? workspaceHint : 'No workspace is exposed.'}`.trim(),
+  const serverInfo = { name: 'fusion-jev', title: 'Fusion Jev', version: '0.3.0' };
+  const server = new McpServer(serverInfo, {
+    instructions: `Prefer Fusion for supported inspection: assist for short tasks, inspect for known operations, evidence for expansion. Jev selects validated IDs only. Host owns reasoning, edits, command authorization and correctness. Run chosen commands through fusion-jev run -- program argv... if installed globally, else npx -y fusion-jev@${serverInfo.version} run -- program argv..., by default (--raw for small exact output; quote '--' in PowerShell). Escalate here; RTK/native tools are fallback. ${hasWorkspace ? workspaceHint : 'No workspace is exposed.'}`.trim(),
   });
   const securitySchemes = config.http.oauth ? [{ type: 'oauth2', scopes: config.http.oauth.scopes }] : [{ type: 'noauth' }];
   const common = { annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true }, _meta: { securitySchemes } };
