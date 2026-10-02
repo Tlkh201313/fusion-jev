@@ -2,6 +2,8 @@
 
 Fusion Jev is a thin local layer between your coding agent (the **host**) and the noisy things it reads: command output, files, searches and Git history. It does three jobs: capture, summarize, and let the host recover the original.
 
+<p align="center"><img src="assets/how-it-works.svg" alt="Flow: host runs fusion-jev run or calls the MCP server; the executor captures output, stores original bytes in a local expiring receipt store, and returns a compact diagnostic plus receipt IDs; the host expands receipts with fusion_evidence or fusion-jev evidence" width="880"></p>
+
 ```mermaid
 flowchart LR
   Host["Host<br/>(Claude Code / Codex)"] -->|MCP tools| Server["fusion-jev stdio"]

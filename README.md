@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="docs/assets/hero.svg" alt="Fusion Jev: keep noisy command output small, recover the captured evidence when you need it. Works with Claude Code and Codex." width="880">
+
 # Fusion Jev
 
 **Keep noisy command output small. Recover the captured evidence when you need it.**
@@ -19,6 +21,8 @@ Fusion Jev is a local CLI and [MCP](https://modelcontextprotocol.io) server for 
 -->
 
 ## See it work
+
+<p align="center"><img src="docs/assets/before-after.svg" alt="Without Fusion the agent reads 200 noisy lines with one error at the end; with Fusion Jev it gets exitCode=2, one diagnostic, omittedBytes=4290 and a receipt ID, and the full log stays recoverable" width="880"></p>
 
 A deliberately failing command with 200 lines of noise and one real error:
 
@@ -105,6 +109,8 @@ The default profile exposes three MCP tools:
 Commands are run through the CLI wrapper, `npx -y fusion-jev run -- program args...` (or `fusion-jev run -- program args...` after a global install), chosen and authorized by your host. Fusion does not intercept native tools or pick arbitrary shell commands.
 
 ## How it works
+
+<p align="center"><img src="docs/assets/how-it-works.svg" alt="Flow: host runs fusion-jev run or calls the MCP server; the executor captures output, stores original bytes in a local expiring receipt store, and returns a compact diagnostic plus receipt IDs; the host expands receipts with fusion_evidence or fusion-jev evidence" width="880"></p>
 
 ```mermaid
 flowchart LR

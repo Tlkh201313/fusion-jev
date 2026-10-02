@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="540" viewBox="0 0 1200 540" role="img" aria-labelledby="t d">
+  <title id="t">How Fusion Jev works</title>
+  <desc id="d">Flow: the host (Claude Code or Codex) calls the fusion-jev stdio MCP server or runs fusion-jev run -- cmd. The executor runs the command locally, captures stdout and stderr and keeps the exit status. It redacts known secrets, caps size and stores the original bytes in a local, private, expiring receipt store, and sends a compact diagnostic plus receipt IDs back to the host. The host expands a receipt on demand with fusion_evidence or fusion-jev evidence ID. Optionally the server can ask Jev to choose among validated actions.</desc>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#8B949E"/></marker>
+    <marker id="o" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#F2803A"/></marker>
+  </defs>
+  <style>
+    text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;fill:#C9D1D9}
+    .m{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace}
+    .t{font-size:19px;font-weight:700;fill:#F0F6FC}
+    .s{font-size:13.5px;fill:#8B949E}
+    .l{font-size:13.5px;fill:#C9D1D9}
+    .lo{font-size:14px;font-weight:600;fill:#F2803A}
+    .box{fill:#161B22;stroke:#30363D;stroke-width:1.5}
+    .ln{stroke:#8B949E;stroke-width:2;fill:none}
+    .lnO{stroke:#F2803A;stroke-width:2.5;fill:none}
+  </style>
+  <rect width="1200" height="540" rx="24" fill="#0D1117"/>
+  <rect x="0.5" y="0.5" width="1199" height="539" rx="24" fill="none" stroke="#30363D"/>
+
+  <!-- Host -->
+  <rect x="40" y="170" width="220" height="160" rx="14" fill="#161B22" stroke="#F2803A" stroke-width="2"/>
+  <text class="t" x="150" y="226" text-anchor="middle">Host agent</text>
+  <text class="l" x="150" y="254" text-anchor="middle">Claude Code · Codex</text>
+  <text class="s" x="150" y="284" text-anchor="middle">owns reasoning, edits,</text>
+  <text class="s" x="150" y="303" text-anchor="middle">command authorization</text>
+
+  <!-- MCP server -->
+  <rect class="box" x="420" y="44" width="300" height="104" rx="14"/>
+  <text class="t" x="440" y="76">MCP server</text>
+  <text class="m l" x="440" y="102">fusion-jev stdio</text>
+  <text class="s" x="440" y="128">inspect · assist · evidence</text>
+
+  <!-- Executor -->
+  <rect class="box" x="420" y="196" width="300" height="114" rx="14"/>
+  <text class="t" x="440" y="228">Executor</text>
+  <text class="m l" x="440" y="254">fusion-jev run -- &lt;cmd&gt;</text>
+  <text class="s" x="440" y="278">runs locally, captures stdout + stderr,</text>
+  <text class="s" x="440" y="297">exits with the child's status</text>
+
+  <!-- Jev optional -->
+  <rect x="880" y="54" width="280" height="84" rx="14" fill="#161B22" stroke="#30363D" stroke-width="1.5" stroke-dasharray="6 5"/>
+  <text class="t" x="900" y="86">Jev <tspan class="s" font-weight="400">(optional, TypeSafe)</tspan></text>
+  <text class="s" x="900" y="114">picks one ID among validated actions</text>
+
+  <!-- Receipt store (cylinder) -->
+  <path d="M880 210a140 18 0 0 0 280 0v100a140 18 0 0 1-280 0z" fill="#161B22" stroke="#F2803A" stroke-width="2"/>
+  <ellipse cx="1020" cy="210" rx="140" ry="18" fill="#21262D" stroke="#F2803A" stroke-width="2"/>
+  <text class="t" x="1020" y="262" text-anchor="middle">Receipt store</text>
+  <text class="s" x="1020" y="288" text-anchor="middle">original bytes · local · private</text>
+  <text class="s" x="1020" y="307" text-anchor="middle">expires after 10 minutes</text>
+
+  <!-- arrows -->
+  <path class="ln" d="M260 200H340V96H412" marker-end="url(#a)"/>
+  <text class="l" x="350" y="88">MCP tools</text>
+  <path class="ln" d="M260 250H412" marker-end="url(#a)"/>
+  <text class="l" x="274" y="242">run -- cmd</text>
+  <path class="ln" d="M570 148V188" marker-end="url(#a)"/>
+  <path class="ln" d="M720 96H872" stroke-dasharray="6 5" marker-end="url(#a)"/>
+  <text class="s" x="796" y="86" text-anchor="middle">optional</text>
+  <path class="ln" d="M720 250H872" marker-end="url(#a)"/>
+  <text class="s" x="796" y="236" text-anchor="middle">redact known</text>
+  <text class="s" x="796" y="272" text-anchor="middle">secrets, cap size</text>
+
+  <path class="lnO" d="M570 310V380H180V338" marker-end="url(#o)"/>
+  <text class="lo" x="375" y="372" text-anchor="middle">compact diagnostic + receipt IDs</text>
+
+  <path class="ln" d="M110 330V450H1020V336" marker-end="url(#a)"/>
+  <text class="l" x="565" y="440" text-anchor="middle">expand on demand: <tspan class="m">fusion_evidence</tspan> · <tspan class="m">fusion-jev evidence &lt;id&gt; --raw</tspan></text>
+
+  <text class="s" x="600" y="506" text-anchor="middle">Recovery returns what was retained: bytes that were clipped, redacted or never printed cannot come back.</text>
+</svg>

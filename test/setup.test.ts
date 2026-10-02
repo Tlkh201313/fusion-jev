@@ -49,3 +49,37 @@ test('setup refuses an existing provider file shared with other users',async t=>
   } else await chmod(file,0o644);
   const result=run(home,[]);assert.equal(result.status,1);assert.match(result.stderr,/private/i);
 });
+
+const pkgVersion=JSON.parse(await readFile(new URL('../package.json',import.meta.url),'utf8')).version as string;
+async function dryRun(executable:string,cliPath:string){
+  const {prepareSetup}=await import('../src/setup.js');
+  return prepareSetup({configDir:join(tmpdir(),'fusion-setup-unit'),executable,cliPath,dryRun:true}).instructions;
+}
+function assertPinnedNpx(text:string){
+  const npx=`npx -y fusion-jev@${pkgVersion}`;
+  assert.ok(text.includes(`\n${npx} doctor stdio '--provider-env=`),text);
+  assert.ok(text.includes(`codex mcp add fusion-jev -- ${npx} stdio '--provider-env=`),text);
+  assert.ok(text.includes(`claude mcp add --transport stdio --scope user fusion-jev -- ${npx} stdio '--provider-env=`),text);
+  assert.match(text,/npm i -g fusion-jev/);assert.doesNotMatch(text,/_npx|cli\.js/);
+  if(process.platform==='win32') assert.ok(text.includes(`fusion-jev -- cmd /c ${npx} stdio`),text);
+  else assert.doesNotMatch(text,/cmd \/c/);
+}
+
+test('setup names the pinned npx package when running from a Windows-style npx cache',{skip:process.platform!=='win32'&&'Windows paths are not absolute here'},async()=>{
+  assertPinnedNpx(await dryRun(String.raw`C:\Program Files\nodejs\node.exe`,String.raw`C:\Users\u\AppData\Local\npm-cache\_npx\838123eac27a83ce\node_modules\fusion-jev\dist\cli.js`));
+});
+
+test('setup names the pinned npx package when running from a POSIX-style npx cache',async()=>{
+  assertPinnedNpx(await dryRun('/usr/bin/node','/home/u/.npm/_npx/838123eac27a83ce/node_modules/fusion-jev/dist/cli.js'));
+});
+
+test('setup keeps absolute-path commands outside the npx cache',async()=>{
+  const node=process.platform==='win32'?String.raw`C:\Program Files\nodejs\node.exe`:'/usr/bin/node';
+  const cliPath=process.platform==='win32'?String.raw`C:\Users\u\AppData\Roaming\npm\node_modules\fusion-jev\dist\cli.js`:'/usr/lib/node_modules/fusion-jev/dist/cli.js';
+  const text=await dryRun(node,cliPath);
+  const prefix=process.platform==='win32'?'& ':'';
+  const env=`'--provider-env=${join(tmpdir(),'fusion-setup-unit','provider.env')}'`;
+  assert.ok(text.includes(`\n${prefix}'${node}' '${cliPath}' doctor stdio ${env}\n`),text);
+  assert.ok(text.includes(`\ncodex mcp add fusion-jev -- '${node}' '${cliPath}' stdio ${env}\nclaude mcp add --transport stdio --scope user fusion-jev -- '${node}' '${cliPath}' stdio ${env}\nHost configurations were not changed.`),text);
+  assert.doesNotMatch(text,/npx|npm i -g/);
+});

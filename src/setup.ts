@@ -52,8 +52,23 @@ export function prepareSetup(options: { configDir: string; envFile?: string; exe
         throw new Error('A different env-file setting exists; use fusion-jev config env-file ABSOLUTE_PATH to change it explicitly');
     } else exclusiveFile(settings, JSON.stringify({ envFile }) + '\n');
   }
-  const node = quote(options.executable), cli = quote(options.cliPath), envArg = quote(`--provider-env=${envFile}`);
-  const doctor = `${process.platform === 'win32' ? '& ' : ''}${node} ${cli} doctor stdio ${envArg}`;
-  const commands = `codex mcp add fusion-jev -- ${node} ${cli} stdio ${envArg}\nclaude mcp add --transport stdio --scope user fusion-jev -- ${node} ${cli} stdio ${envArg}`;
+  const envArg = quote(`--provider-env=${envFile}`);
+  let doctor: string, commands: string;
+  // A copy inside npm's npx cache disappears when npm cleans that cache, so name the pinned npx package instead of its path.
+  if (options.cliPath.split(/[\\/]/).includes('_npx')) {
+    const version: unknown = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
+    if (typeof version !== 'string' || !/^[0-9A-Za-z.+-]+$/.test(version)) throw new Error('Package version is unavailable');
+    const npx = `npx -y fusion-jev@${version}`;
+    doctor = `${npx} doctor stdio ${envArg}`;
+    commands = `codex mcp add fusion-jev -- ${npx} stdio ${envArg}\nclaude mcp add --transport stdio --scope user fusion-jev -- ${npx} stdio ${envArg}\n` +
+      'For an absolute-path command instead, install globally (npm i -g fusion-jev) and run fusion-jev setup.' +
+      (process.platform === 'win32' ? '\nNative Windows: if Claude Code reports Connection closed or ENOENT for npx (it is a .cmd shim), use the cmd wrapper:\n' +
+        `claude mcp add --transport stdio --scope user fusion-jev -- cmd /c ${npx} stdio ${envArg}\n` +
+        'For Codex, no Windows-specific npx form is documented; use the absolute-path command after a global install.' : '');
+  } else {
+    const node = quote(options.executable), cli = quote(options.cliPath);
+    doctor = `${process.platform === 'win32' ? '& ' : ''}${node} ${cli} doctor stdio ${envArg}`;
+    commands = `codex mcp add fusion-jev -- ${node} ${cli} stdio ${envArg}\nclaude mcp add --transport stdio --scope user fusion-jev -- ${node} ${cli} stdio ${envArg}`;
+  }
   return { envFile, created, instructions: `${options.dryRun ? 'Dry run: no files written.' : created ? 'Created a private provider template.' : 'Kept the existing provider file.'}\nEdit this private file to enable optional Jev choices:\n${envFile}\nSet TYPESAFE_API_KEY to your official TypeSafe key. Deterministic local tools work without it.\nCheck local configuration (no provider call):\n${doctor}\nConnect one host with the command for your shell:\n${commands}\nHost configurations were not changed. Restart the MCP connection after adding it.\n` };
 }
