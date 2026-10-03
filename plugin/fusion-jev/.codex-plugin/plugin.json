@@ -15,7 +15,7 @@
     "logo": "./assets/logo.png",
     "logoDark": "./assets/logo.png",
     "shortDescription": "Grounded code evidence with bounded Jev choices.",
-    "longDescription": "Try Fusion for repository inspection and source-linked evidence. Jev selects only among bounded prebuilt actions when needed. Codex keeps reasoning, edits, commands, web research and correctness decisions. The adapter launches the published fusion-jev MCP server, pinned to its version, through npx.",
+    "longDescription": "Use Fusion assistance for routine reads, lists, searches, Git checks and commands, including small tasks. Configured Jev selects validated actions or exact host command plans. Fusion returns recoverable evidence; the host executes command plans and verifies results. Inspection is a recovery fallback. This adapter uses the version-pinned public package and official Jev.",
     "developerName": "Fusion contributors",
     "category": "Productivity",
     "capabilities": [
