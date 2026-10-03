@@ -19,8 +19,11 @@ export async function runLiveBenchmark(): Promise<void> {
     return;
   }
   const router = new FusionRouter({ config, jev: new JevProvider(config.jev), gpt: new GptProvider(config.gpt) });
-  const pricesConfigured = [config.jev, config.gpt].every(provider =>
-    provider.inputUsdPerMillion > 0 && provider.outputUsdPerMillion > 0);
-  const report = await runBenchmark(fixtures, request => router.route(request), { pricesConfigured });
-  process.stdout.write(`${JSON.stringify({ mode: 'live', note: 'Small fixed fixture set; task success is unmeasured because tools are not executed.', report }, null, 2)}\n`);
+  const pricesConfigured = [config.jev, config.gpt].every(
+    (provider) => provider.inputUsdPerMillion > 0 && provider.outputUsdPerMillion > 0,
+  );
+  const report = await runBenchmark(fixtures, (request) => router.route(request), { pricesConfigured });
+  process.stdout.write(
+    `${JSON.stringify({ mode: 'live', note: 'Small fixed fixture set; task success is unmeasured because tools are not executed.', report }, null, 2)}\n`,
+  );
 }

@@ -9,16 +9,30 @@ import { HELP } from './cli/help.js';
 const context: CliContext = { selfUrl: import.meta.url };
 
 async function main(): Promise<void> {
-  if (process.argv[2] === 'run') { await (await import('./cli/run-command.js')).runCli(process.argv.slice(3), context); return; }
-  if (process.argv[2] === 'evidence') { await (await import('./cli/evidence-command.js')).evidenceCli(process.argv.slice(3)); return; }
+  if (process.argv[2] === 'run') {
+    await (await import('./cli/run-command.js')).runCli(process.argv.slice(3), context);
+    return;
+  }
+  if (process.argv[2] === 'evidence') {
+    await (await import('./cli/evidence-command.js')).evidenceCli(process.argv.slice(3));
+    return;
+  }
   const commands = await import('./cli/config-command.js');
   const [config, { prepareSetup }] = await Promise.all([commands.loadConfigModules(), import('./setup.js')]);
   const { args, providerEnv } = splitProviderEnv(process.argv.slice(2));
-  if (args[0] === '--help' || args[0] === '-h' || args[0] === 'help') { process.stdout.write(HELP); return; }
+  if (args[0] === '--help' || args[0] === '-h' || args[0] === 'help') {
+    process.stdout.write(HELP);
+    return;
+  }
   if (args[0] === 'setup') {
     assertSetupArgs(args);
-    const result = prepareSetup({ configDir: dirname(commands.userConfigPath(config)), envFile: providerEnv,
-      executable: process.execPath, cliPath: builtCliPath(context), dryRun: args.includes('--dry-run') });
+    const result = prepareSetup({
+      configDir: dirname(commands.userConfigPath(config)),
+      envFile: providerEnv,
+      executable: process.execPath,
+      cliPath: builtCliPath(context),
+      dryRun: args.includes('--dry-run'),
+    });
     process.stdout.write(result.instructions);
     return;
   }
@@ -31,7 +45,7 @@ async function main(): Promise<void> {
   await (await import('./cli/serve.js')).serveCli(args);
 }
 
-main().catch(error => {
+main().catch((error) => {
   // Configuration diagnostics use static messages; provider bodies never reach stderr.
   process.stderr.write(`Fusion: ${error instanceof Error ? error.message : 'startup failed'}\n`);
   process.exitCode = 1;

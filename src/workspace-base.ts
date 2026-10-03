@@ -1,12 +1,40 @@
 /** Shared workspace primitives: error type, abort checks, the exclusion list and path containment. No filesystem access. */
 import { relative, sep } from 'node:path';
 
-export type WorkspaceErrorCode = 'INVALID_REQUEST' | 'INVALID_PATH' | 'NOT_FOUND' | 'NOT_A_FILE' | 'NOT_A_DIRECTORY' | 'NOT_TEXT_FILE' | 'FILE_TOO_LARGE' | 'GIT_FAILED' | 'CANCELLED' | 'TIMEOUT';
+export type WorkspaceErrorCode =
+  | 'INVALID_REQUEST'
+  | 'INVALID_PATH'
+  | 'NOT_FOUND'
+  | 'NOT_A_FILE'
+  | 'NOT_A_DIRECTORY'
+  | 'NOT_TEXT_FILE'
+  | 'FILE_TOO_LARGE'
+  | 'GIT_FAILED'
+  | 'CANCELLED'
+  | 'TIMEOUT';
 export class WorkspaceError extends Error {
-  constructor(readonly code: WorkspaceErrorCode, message: string) { super(message); this.name = 'WorkspaceError'; }
+  constructor(
+    readonly code: WorkspaceErrorCode,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'WorkspaceError';
+  }
 }
 
-export const EXCLUDED = new Set(['.git', 'node_modules', 'dist', '.next', '.ssh', '.aws', '.azure', '.gnupg', '.codex', '.npmrc', '.superpowers']);
+export const EXCLUDED = new Set([
+  '.git',
+  'node_modules',
+  'dist',
+  '.next',
+  '.ssh',
+  '.aws',
+  '.azure',
+  '.gnupg',
+  '.codex',
+  '.npmrc',
+  '.superpowers',
+]);
 
 export function excludedName(name: string): boolean {
   const lower = name.toLowerCase();

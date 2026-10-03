@@ -1,5 +1,14 @@
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync } from 'node:fs';
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  realpathSync,
+  rmSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { isAbsolute, join, sep } from 'node:path';
 import { LIMITS } from './limits.js';
@@ -147,18 +156,28 @@ if ($wasTrusted) {
 `;
 
 function scriptEnv(path: string, directory: boolean): NodeJS.ProcessEnv {
-  return { ...process.env, FUSION_EVIDENCE_ACL_PATH: path, FUSION_EVIDENCE_ACL_DIRECTORY: directory ? '1' : '0',
-    FUSION_EVIDENCE_ACL_MUTEX: `Local\\FusionEvidenceAcl-${sha256Hex(path.toLowerCase()).slice(0, 32)}` };
+  return {
+    ...process.env,
+    FUSION_EVIDENCE_ACL_PATH: path,
+    FUSION_EVIDENCE_ACL_DIRECTORY: directory ? '1' : '0',
+    FUSION_EVIDENCE_ACL_MUTEX: `Local\\FusionEvidenceAcl-${sha256Hex(path.toLowerCase()).slice(0, 32)}`,
+  };
 }
 const POWERSHELL_ARGS = ['-NoProfile', '-NonInteractive', '-Command', SCRIPT];
 
 function verdict(stdout: string): boolean | undefined {
-  const last = stdout.split(/\r?\n/).map(line => line.trim()).filter(Boolean).pop();
+  const last = stdout
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .pop();
   return last === 'TRUSTED' ? true : last === 'UNTRUSTED' ? false : undefined;
 }
 
 function failure(reason: unknown): Error {
-  const first = String(reason ?? '').split(/\r?\n/, 1)[0]?.trim();
+  const first = String(reason ?? '')
+    .split(/\r?\n/, 1)[0]
+    ?.trim();
   return new Error('Unable to make evidence storage private' + (first ? ` (${first})` : ''));
 }
 
@@ -186,7 +205,10 @@ export function sddlIsPrivate(sddl: string, currentSid: string): boolean {
 
 /** Parses `icacls /save` output (UTF-16LE: a name line then its SDDL line) into name -> SDDL. */
 export function parseIcaclsSave(bytes: Buffer): Map<string, string> | undefined {
-  const lines = bytes.toString('utf16le').replace(/^\uFEFF/, '').split(/\r?\n/);
+  const lines = bytes
+    .toString('utf16le')
+    .replace(/^\uFEFF/, '')
+    .split(/\r?\n/);
   while (lines.length && lines[lines.length - 1] === '') lines.pop();
   if (lines.length % 2 !== 0) return undefined;
   const entries = new Map<string, string>();
@@ -211,20 +233,33 @@ function plainFileNames(directory: string): string[] | undefined {
   return names;
 }
 
-interface FastPlan { names: string[]; tmp: string; dirSave: string; filesSave: string; commands: Array<{ file: string; args: string[] }> }
+interface FastPlan {
+  names: string[];
+  tmp: string;
+  dirSave: string;
+  filesSave: string;
+  commands: Array<{ file: string; args: string[] }>;
+}
 
 function planFastCheck(directory: string): FastPlan | undefined {
   if (existsSync(lockPath(directory))) return undefined;
   const names = plainFileNames(directory);
   if (!names) return undefined;
   const tmp = mkdtempSync(join(tmpdir(), 'fusion-acl-'));
-  const dirSave = join(tmp, 'dir.txt'), filesSave = join(tmp, 'files.txt');
+  const dirSave = join(tmp, 'dir.txt'),
+    filesSave = join(tmp, 'files.txt');
   const icacls = systemExecutable('icacls.exe');
-  return { names, tmp, dirSave, filesSave, commands: [
-    { file: icacls, args: [directory, '/save', dirSave] },
-    ...(names.length ? [{ file: icacls, args: [join(directory, '*'), '/save', filesSave, '/c'] }] : []),
-    { file: systemExecutable('whoami.exe'), args: ['/user', '/fo', 'csv', '/nh'] },
-  ] };
+  return {
+    names,
+    tmp,
+    dirSave,
+    filesSave,
+    commands: [
+      { file: icacls, args: [directory, '/save', dirSave] },
+      ...(names.length ? [{ file: icacls, args: [join(directory, '*'), '/save', filesSave, '/c'] }] : []),
+      { file: systemExecutable('whoami.exe'), args: ['/user', '/fo', 'csv', '/nh'] },
+    ],
+  };
 }
 
 function judgeFastCheck(directory: string, plan: FastPlan, whoami: string): boolean {
@@ -244,7 +279,7 @@ function judgeFastCheck(directory: string, plan: FastPlan, whoami: string): bool
   if (existsSync(lockPath(directory))) return false;
   // Every file must still be a plain file with the same names; anything that moved is for PowerShell to judge.
   const after = plainFileNames(directory);
-  return Boolean(after) && after!.length === plan.names.length && after!.every(name => plan.names.includes(name));
+  return Boolean(after) && after!.length === plan.names.length && after!.every((name) => plan.names.includes(name));
 }
 
 function fastCheckSync(directory: string): boolean {
@@ -254,34 +289,61 @@ function fastCheckSync(directory: string): boolean {
     if (!plan) return false;
     let whoami = '';
     for (const command of plan.commands) {
-      const result = spawnSync(command.file, command.args, { windowsHide: true, encoding: 'utf8', timeout: LIMITS.aclFastCheckMs });
+      const result = spawnSync(command.file, command.args, {
+        windowsHide: true,
+        encoding: 'utf8',
+        timeout: LIMITS.aclFastCheckMs,
+      });
       if (command.file.endsWith('whoami.exe')) whoami = result.stdout ?? '';
       else if (result.status !== 0) return false;
     }
     return judgeFastCheck(directory, plan, whoami);
-  } catch { return false; }
-  finally { if (plan) rmSync(plan.tmp, { recursive: true, force: true }); }
+  } catch {
+    return false;
+  } finally {
+    if (plan) rmSync(plan.tmp, { recursive: true, force: true });
+  }
 }
 
 function fastCheckAsync(directory: string, signal: AbortSignal): Promise<boolean> {
   let plan: FastPlan | undefined;
-  try { plan = planFastCheck(directory); } catch { return Promise.resolve(false); }
+  try {
+    plan = planFastCheck(directory);
+  } catch {
+    return Promise.resolve(false);
+  }
   if (!plan) return Promise.resolve(false);
   const ready = plan;
-  const run = (command: FastPlan['commands'][number]) => new Promise<{ ok: boolean; stdout: string }>(resolve => {
-    let stdout = '';
-    const child = spawn(command.file, command.args, { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'], signal });
-    const timer = setTimeout(() => child.kill(), LIMITS.aclFastCheckMs);
-    child.stdout.on('data', (chunk: Buffer) => { if (stdout.length < LIMITS.helperOutputChars) stdout += chunk.toString('utf8'); });
-    child.once('error', () => { clearTimeout(timer); resolve({ ok: false, stdout }); });
-    child.once('close', code => { clearTimeout(timer); resolve({ ok: code === 0, stdout }); });
-  });
-  return Promise.all(ready.commands.map(run)).then(results => {
-    if (signal.aborted) return false;
-    const whoamiIndex = ready.commands.findIndex(command => command.file.endsWith('whoami.exe'));
-    if (results.some((result, index) => index !== whoamiIndex && !result.ok)) return false;
-    return judgeFastCheck(directory, ready, results[whoamiIndex]!.stdout);
-  }).catch(() => false).finally(() => rmSync(ready.tmp, { recursive: true, force: true }));
+  const run = (command: FastPlan['commands'][number]) =>
+    new Promise<{ ok: boolean; stdout: string }>((resolve) => {
+      let stdout = '';
+      const child = spawn(command.file, command.args, {
+        windowsHide: true,
+        stdio: ['ignore', 'pipe', 'ignore'],
+        signal,
+      });
+      const timer = setTimeout(() => child.kill(), LIMITS.aclFastCheckMs);
+      child.stdout.on('data', (chunk: Buffer) => {
+        if (stdout.length < LIMITS.helperOutputChars) stdout += chunk.toString('utf8');
+      });
+      child.once('error', () => {
+        clearTimeout(timer);
+        resolve({ ok: false, stdout });
+      });
+      child.once('close', (code) => {
+        clearTimeout(timer);
+        resolve({ ok: code === 0, stdout });
+      });
+    });
+  return Promise.all(ready.commands.map(run))
+    .then((results) => {
+      if (signal.aborted) return false;
+      const whoamiIndex = ready.commands.findIndex((command) => command.file.endsWith('whoami.exe'));
+      if (results.some((result, index) => index !== whoamiIndex && !result.ok)) return false;
+      return judgeFastCheck(directory, ready, results[whoamiIndex]!.stdout);
+    })
+    .catch(() => false)
+    .finally(() => rmSync(ready.tmp, { recursive: true, force: true }));
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -293,17 +355,25 @@ function verifyDirectoryAclSync(directory: string): boolean {
   let limit = aclTimeoutMs();
   for (let attempt = 0; ; attempt++) {
     const result = spawnSync(powershellPath(), POWERSHELL_ARGS, {
-      windowsHide: true, encoding: 'utf8', timeout: limit, input: 'GO\n', env: scriptEnv(directory, true),
+      windowsHide: true,
+      encoding: 'utf8',
+      timeout: limit,
+      input: 'GO\n',
+      env: scriptEnv(directory, true),
     });
     const timedOut = (result.error as NodeJS.ErrnoException | undefined)?.code === 'ETIMEDOUT';
-    if (timedOut && attempt === 0) { limit *= RETRY_FACTOR; continue; }
+    if (timedOut && attempt === 0) {
+      limit *= RETRY_FACTOR;
+      continue;
+    }
     const answer = result.status === 0 ? verdict(result.stdout) : undefined;
     if (answer === undefined) throw failure(result.error?.message ?? result.stderr);
     return answer;
   }
 }
 
-type Attempt = { kind: 'done'; trusted: boolean } | { kind: 'timeout'; repairing: boolean } | { kind: 'failed'; reason: string };
+type Attempt =
+  { kind: 'done'; trusted: boolean } | { kind: 'timeout'; repairing: boolean } | { kind: 'failed'; reason: string };
 
 /** An in-flight directory ACL verification that can be awaited or, while still read-only, abandoned. */
 export class AclVerification {
@@ -314,7 +384,9 @@ export class AclVerification {
   private settled = false;
 
   constructor(private readonly directory: string) {
-    this.result = this.run().finally(() => { this.settled = true; });
+    this.result = this.run().finally(() => {
+      this.settled = true;
+    });
     this.result.catch(() => undefined); // A result nobody awaits (abandoned verification) must not be an unhandled rejection.
   }
 
@@ -325,7 +397,11 @@ export class AclVerification {
       this.abort.abort();
       this.child?.kill();
     }
-    try { await this.result; } catch { /* Only completion matters here. */ }
+    try {
+      await this.result;
+    } catch {
+      /* Only completion matters here. */
+    }
   }
 
   private async run(): Promise<boolean> {
@@ -343,19 +419,36 @@ export class AclVerification {
   }
 
   private attempt(limit: number): Promise<Attempt> {
-    return new Promise(resolve => {
-      let stdout = '', stderr = '';
+    return new Promise((resolve) => {
+      let stdout = '',
+        stderr = '';
       let timer: ReturnType<typeof setTimeout> | undefined;
       let child: ChildProcess;
       try {
-        child = spawn(powershellPath(), POWERSHELL_ARGS, { windowsHide: true, env: scriptEnv(this.directory, true), stdio: ['pipe', 'pipe', 'pipe'] });
-      } catch (error) { resolve({ kind: 'failed', reason: error instanceof Error ? error.message : String(error) }); return; }
+        child = spawn(powershellPath(), POWERSHELL_ARGS, {
+          windowsHide: true,
+          env: scriptEnv(this.directory, true),
+          stdio: ['pipe', 'pipe', 'pipe'],
+        });
+      } catch (error) {
+        resolve({ kind: 'failed', reason: error instanceof Error ? error.message : String(error) });
+        return;
+      }
       this.child = child;
       this.repairing = false;
       const expire = () => {
-        if (!this.repairing) { child.kill(); resolve({ kind: 'timeout', repairing: false }); return; }
+        if (!this.repairing) {
+          child.kill();
+          resolve({ kind: 'timeout', repairing: false });
+          return;
+        }
         // Never kill a repair midway: wait for it for as long again, then give up on it without touching it.
-        timer = setTimeout(() => { child.stdout?.destroy(); child.stderr?.destroy(); child.stdin?.destroy(); resolve({ kind: 'timeout', repairing: true }); }, limit * RETRY_FACTOR);
+        timer = setTimeout(() => {
+          child.stdout?.destroy();
+          child.stderr?.destroy();
+          child.stdin?.destroy();
+          resolve({ kind: 'timeout', repairing: true });
+        }, limit * RETRY_FACTOR);
       };
       timer = setTimeout(expire, limit);
       child.stdin!.on('error', () => undefined);
@@ -366,12 +459,21 @@ export class AclVerification {
           child.stdin!.write('GO\n');
         }
       });
-      child.stderr!.on('data', (chunk: Buffer) => { if (stderr.length < LIMITS.helperOutputChars) stderr += chunk.toString('utf8'); });
-      child.once('error', error => { clearTimeout(timer); resolve({ kind: 'failed', reason: error.message }); });
-      child.once('close', code => {
+      child.stderr!.on('data', (chunk: Buffer) => {
+        if (stderr.length < LIMITS.helperOutputChars) stderr += chunk.toString('utf8');
+      });
+      child.once('error', (error) => {
+        clearTimeout(timer);
+        resolve({ kind: 'failed', reason: error.message });
+      });
+      child.once('close', (code) => {
         clearTimeout(timer);
         const answer = code === 0 ? verdict(stdout) : undefined;
-        resolve(answer === undefined ? { kind: 'failed', reason: stderr || `powershell.exe exited with ${code}` } : { kind: 'done', trusted: answer });
+        resolve(
+          answer === undefined
+            ? { kind: 'failed', reason: stderr || `powershell.exe exited with ${code}` }
+            : { kind: 'done', trusted: answer },
+        );
       });
     });
   }
@@ -382,14 +484,19 @@ export class AclVerification {
 
 declare const verifiedBrand: unique symbol;
 /** A storage directory whose privacy was verified by this module. Only this module can mint one. */
-export interface VerifiedStorage { readonly path: string; readonly trusted: boolean; readonly [verifiedBrand]: true }
+export interface VerifiedStorage {
+  readonly path: string;
+  readonly trusted: boolean;
+  readonly [verifiedBrand]: true;
+}
 const minted = new WeakSet<object>();
 const mint = (path: string, trusted: boolean): VerifiedStorage => {
   const value = Object.freeze({ path, trusted }) as unknown as VerifiedStorage;
   minted.add(value);
   return value;
 };
-export const isVerifiedStorage = (value: unknown): value is VerifiedStorage => typeof value === 'object' && value !== null && minted.has(value);
+export const isVerifiedStorage = (value: unknown): value is VerifiedStorage =>
+  typeof value === 'object' && value !== null && minted.has(value);
 
 function localAppData(): string {
   const local = process.env.LOCALAPPDATA;
@@ -401,7 +508,8 @@ function localAppData(): string {
 function prepareDirectory(path: string): string {
   mkdirSync(path, { recursive: true, mode: 0o700 });
   const info = lstatSync(path);
-  if (!info.isDirectory() || info.isSymbolicLink()) throw new Error('Evidence storage requires a private non-symlink directory');
+  if (!info.isDirectory() || info.isSymbolicLink())
+    throw new Error('Evidence storage requires a private non-symlink directory');
   const actual = realpathSync.native(path);
   if (process.platform === 'win32') {
     // LOCALAPPDATA inherits the current user's Windows profile ACL; the CLI cache lives there.
@@ -438,23 +546,33 @@ export class StorageVerification {
       if (!lstatSync(path).isDirectory()) return;
       this.actual = prepareDirectory(path);
       this.verification = new AclVerification(this.actual);
-    } catch { this.actual = undefined; this.verification = undefined; /* ready() reports the real error. */ }
+    } catch {
+      this.actual = undefined;
+      this.verification = undefined; /* ready() reports the real error. */
+    }
   }
 
   ready(): Promise<VerifiedStorage> {
-    return this.outcome ??= (async () => {
+    return (this.outcome ??= (async () => {
       if (process.platform !== 'win32') return mint(prepareDirectory(this.path), true);
       if (!this.verification) {
         this.actual = prepareDirectory(this.path);
         this.verification = new AclVerification(this.actual);
       }
       return mint(this.actual!, await this.verification.result);
-    })();
+    })());
   }
 
   /** Call when no receipt will be stored after all. */
   async discard(): Promise<void> {
-    if (this.outcome) { try { await this.outcome; } catch { /* Reported by whoever awaited ready(). */ } return; }
+    if (this.outcome) {
+      try {
+        await this.outcome;
+      } catch {
+        /* Reported by whoever awaited ready(). */
+      }
+      return;
+    }
     await this.verification?.abandon();
   }
 }
@@ -503,11 +621,23 @@ if (-not $ownerOk) { throw "Wrong owner ($owner)" }
  */
 export function assertWindowsPrivacy(path: string, directory: boolean, protect: boolean, parent = false): void {
   const result = spawnSync(windowsPowerShell(), ['-NoProfile', '-NonInteractive', '-Command', PRIVACY_SCRIPT], {
-    windowsHide: true, encoding: 'utf8', timeout: LIMITS.privacyCheckMs,
-    env: { ...process.env, FUSION_PRIVATE_PATH: path, FUSION_PRIVATE_DIRECTORY: directory ? '1' : '0',
-      FUSION_PRIVATE_PROTECT: protect ? '1' : '0', FUSION_PRIVATE_PARENT: parent ? '1' : '0' } });
+    windowsHide: true,
+    encoding: 'utf8',
+    timeout: LIMITS.privacyCheckMs,
+    env: {
+      ...process.env,
+      FUSION_PRIVATE_PATH: path,
+      FUSION_PRIVATE_DIRECTORY: directory ? '1' : '0',
+      FUSION_PRIVATE_PROTECT: protect ? '1' : '0',
+      FUSION_PRIVATE_PARENT: parent ? '1' : '0',
+    },
+  });
   if (result.status !== 0 || result.stdout.trim() !== 'PRIVATE') {
-    const reason = String(result.stderr ?? '').split(/\r?\n/, 1)[0]?.trim();
-    throw new Error('Configuration path permissions must be private to the current user' + (reason ? ` (${reason})` : ''));
+    const reason = String(result.stderr ?? '')
+      .split(/\r?\n/, 1)[0]
+      ?.trim();
+    throw new Error(
+      'Configuration path permissions must be private to the current user' + (reason ? ` (${reason})` : ''),
+    );
   }
 }

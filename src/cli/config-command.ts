@@ -23,10 +23,18 @@ function savedEnvFile(modules: ConfigModules): string | undefined {
     modules.privateConfig.assertPrivatePath(dirname(path), true);
     modules.privateConfig.assertPrivatePath(path, false);
     const data: unknown = JSON.parse(readFileSync(path, 'utf8'));
-    if (typeof data !== 'object' || data === null || !('envFile' in data) ||
-      typeof data.envFile !== 'string' || !isAbsolute(data.envFile)) throw new Error();
+    if (
+      typeof data !== 'object' ||
+      data === null ||
+      !('envFile' in data) ||
+      typeof data.envFile !== 'string' ||
+      !isAbsolute(data.envFile)
+    )
+      throw new Error();
     return data.envFile;
-  } catch { throw new Error('Saved Fusion env-file setting is invalid; run fusion-jev config env-file --clear'); }
+  } catch {
+    throw new Error('Saved Fusion env-file setting is invalid; run fusion-jev config env-file --clear');
+  }
 }
 
 /** `config env-file <ABSOLUTE_PATH | --clear>` */
@@ -42,7 +50,9 @@ export function configureEnvFile(value: string | undefined, modules: ConfigModul
   let resolved: string;
   try {
     resolved = modules.privateConfig.assertPrivatePath(value, false);
-  } catch { throw new Error('Configured env file is unavailable or invalid'); }
+  } catch {
+    throw new Error('Configured env file is unavailable or invalid');
+  }
   modules.privateConfig.preparePrivateDirectory(dirname(configPath));
   if (existsSync(configPath)) modules.privateConfig.assertPrivatePath(configPath, false);
   writeFileSync(configPath, JSON.stringify({ envFile: resolved }) + '\n', { mode: 0o600 });
@@ -52,9 +62,13 @@ export function configureEnvFile(value: string | undefined, modules: ConfigModul
 /** Loads the provider env file chosen by --provider-env, FUSION_ENV_FILE, or the saved setting. */
 export function loadProviderEnvFile(providerEnv: string | undefined, modules: ConfigModules): void {
   if (providerEnv === '') throw new UsageError('Env file path must be absolute');
-  const envFile = providerEnv ?? (process.env.FUSION_ENV_FILE !== undefined ? process.env.FUSION_ENV_FILE : savedEnvFile(modules));
+  const envFile =
+    providerEnv ?? (process.env.FUSION_ENV_FILE !== undefined ? process.env.FUSION_ENV_FILE : savedEnvFile(modules));
   if (!envFile) return;
   if (!isAbsolute(envFile)) throw new UsageError('Env file path must be absolute');
-  try { process.loadEnvFile(modules.privateConfig.assertPrivatePath(envFile, false)); }
-  catch { throw new Error('Configured env file is unavailable or invalid'); }
+  try {
+    process.loadEnvFile(modules.privateConfig.assertPrivatePath(envFile, false));
+  } catch {
+    throw new Error('Configured env file is unavailable or invalid');
+  }
 }

@@ -10,27 +10,52 @@ import { createFusionMcpServer } from '../src/mcp.js';
 import { WorkspaceService } from '../src/workspace.js';
 import type { RouteResult } from '../src/types.js';
 
-const router = { route: async (): Promise<RouteResult> => { throw new Error('No provider calls expected'); } } as unknown as import('../src/mcp.js').RoutingService;
-const TS = Array.from({ length: 160 }, (_, i) => i === 3 ? 'export function alpha(a: number) {\n  return a + 1;\n}'
-  : i === 40 ? 'export class Box {\n  open() { return 1; }\n  close() { return 2; }\n}' : `const filler${i} = ${i};`).join('\n') + '\n';
+const router = {
+  route: async (): Promise<RouteResult> => {
+    throw new Error('No provider calls expected');
+  },
+} as unknown as import('../src/mcp.js').RoutingService;
+const TS =
+  Array.from({ length: 160 }, (_, i) =>
+    i === 3
+      ? 'export function alpha(a: number) {\n  return a + 1;\n}'
+      : i === 40
+        ? 'export class Box {\n  open() { return 1; }\n  close() { return 2; }\n}'
+        : `const filler${i} = ${i};`,
+  ).join('\n') + '\n';
 
 async function session(t: { after: (fn: () => Promise<void>) => void }, files: Record<string, string>) {
   const root = await mkdtemp(join(tmpdir(), 'fusion-dedupe-'));
   t.after(() => rm(root, { recursive: true, force: true }));
-  for (const [path, content] of Object.entries(files)) { await mkdir(join(root, path, '..'), { recursive: true }); await writeFile(join(root, path), content); }
-  const server = createFusionMcpServer({ router, config: loadConfig({}), workspace: new WorkspaceService(root, router) });
+  for (const [path, content] of Object.entries(files)) {
+    await mkdir(join(root, path, '..'), { recursive: true });
+    await writeFile(join(root, path), content);
+  }
+  const server = createFusionMcpServer({
+    router,
+    config: loadConfig({}),
+    workspace: new WorkspaceService(root, router),
+  });
   const client = new Client({ name: 'dedupe', version: '1' });
   const [left, right] = InMemoryTransport.createLinkedPair();
-  await server.connect(left); await client.connect(right);
-  t.after(async () => { await client.close(); await server.close(); });
+  await server.connect(left);
+  await client.connect(right);
+  t.after(async () => {
+    await client.close();
+    await server.close();
+  });
   const inspect = async (...requests: object[]) => {
     const result = await client.callTool({ name: 'fusion_inspect', arguments: { requests } });
-    return { text: (result.content as any)[0].text as string, data: result.structuredContent as any, error: result.isError };
+    return {
+      text: (result.content as any)[0].text as string,
+      data: result.structuredContent as any,
+      error: result.isError,
+    };
   };
   return { root, inspect };
 }
 
-test('repeat identical read becomes a one-line unchanged note; fresh re-reads; changes return only changed lines', async t => {
+test('repeat identical read becomes a one-line unchanged note; fresh re-reads; changes return only changed lines', async (t) => {
   const { root, inspect } = await session(t, { 'a.ts': TS });
   const first = await inspect({ action: 'read', path: 'a.ts', startLine: 1, maxLines: 20 });
   assert.match(first.text, /filler/);
@@ -49,17 +74,29 @@ test('repeat identical read becomes a one-line unchanged note; fresh re-reads; c
   assert.match(elsewhere.text, /unchanged since request #\d+; file changed elsewhere/);
 });
 
-test('dedupe memory is per session and bounded to 200 entries', async t => {
+test('dedupe memory is per session and bounded to 200 entries', async (t) => {
   const one = await session(t, { 'a.ts': TS });
   await one.inspect({ action: 'read', path: 'a.ts', startLine: 1, maxLines: 5 });
   const other = await session(t, { 'a.ts': TS });
-  assert.doesNotMatch((await other.inspect({ action: 'read', path: 'a.ts', startLine: 1, maxLines: 5 })).text, /unchanged since/);
-  for (let n = 0; n < 205; n++) await one.inspect({ action: 'read', path: 'a.ts', startLine: 10 + (n % 140), maxLines: 1 + Math.floor(n / 140) + 1 });
+  assert.doesNotMatch(
+    (await other.inspect({ action: 'read', path: 'a.ts', startLine: 1, maxLines: 5 })).text,
+    /unchanged since/,
+  );
+  for (let n = 0; n < 205; n++)
+    await one.inspect({
+      action: 'read',
+      path: 'a.ts',
+      startLine: 10 + (n % 140),
+      maxLines: 1 + Math.floor(n / 140) + 1,
+    });
   // The earliest remembered range has been evicted, so it is served in full again.
-  assert.doesNotMatch((await one.inspect({ action: 'read', path: 'a.ts', startLine: 1, maxLines: 5 })).text, /unchanged since/);
+  assert.doesNotMatch(
+    (await one.inspect({ action: 'read', path: 'a.ts', startLine: 1, maxLines: 5 })).text,
+    /unchanged since/,
+  );
 });
 
-test('outline and symbol ops return receipts and dedupe', async t => {
+test('outline and symbol ops return receipts and dedupe', async (t) => {
   const { inspect } = await session(t, { 'a.ts': TS, 'b.ts': 'export function alpha() {}\n' });
   const outline = await inspect({ action: 'outline', path: 'a.ts' });
   assert.match(outline.text, /alpha/);
@@ -76,7 +113,7 @@ test('outline and symbol ops return receipts and dedupe', async t => {
   assert.equal(missing.data.failed[0], 1);
 });
 
-test('an unranged read of a big file leads with a compact outline; ranged reads do not', async t => {
+test('an unranged read of a big file leads with a compact outline; ranged reads do not', async (t) => {
   const { inspect } = await session(t, { 'a.ts': TS });
   const big = await inspect({ action: 'read', path: 'a.ts' });
   assert.match(big.text, /Outline of \d+ lines/);
@@ -85,9 +122,11 @@ test('an unranged read of a big file leads with a compact outline; ranged reads 
   assert.doesNotMatch(ranged.text, /Outline of/);
 });
 
-test('files over 8 MiB are read and outlined by streaming, with a derived receipt', async t => {
-  const body = 'export function marker() {\n  return 1;\n}\n' + '// filler line of padding text\n'.repeat(300_000)
-    + 'export function tail_fn() {\n  return 2;\n}\n';
+test('files over 8 MiB are read and outlined by streaming, with a derived receipt', async (t) => {
+  const body =
+    'export function marker() {\n  return 1;\n}\n' +
+    '// filler line of padding text\n'.repeat(300_000) +
+    'export function tail_fn() {\n  return 2;\n}\n';
   const { inspect } = await session(t, { 'big.ts': body });
   assert.ok(Buffer.byteLength(body) > 8 * 1024 * 1024);
   const read = await inspect({ action: 'read', path: 'big.ts', startLine: 300_004, maxLines: 4 });
@@ -100,11 +139,17 @@ test('files over 8 MiB are read and outlined by streaming, with a derived receip
   assert.equal(outline.data.evidenceRefs[0].receipt.source.kind, 'derived_workspace');
 });
 
-test('grep ranks definitions first and search reports partial scans, both with receipts', async t => {
-  const { inspect } = await session(t, { 'src/a.ts': 'export function fitBlocks() {}\n', 'src/b.ts': 'fitBlocks();\n',
-    'huge.log': 'x\n'.repeat(700_000) + 'fitBlocks\n' });
+test('grep ranks definitions first and search reports partial scans, both with receipts', async (t) => {
+  const { inspect } = await session(t, {
+    'src/a.ts': 'export function fitBlocks() {}\n',
+    'src/b.ts': 'fitBlocks();\n',
+    'huge.log': 'x\n'.repeat(700_000) + 'fitBlocks\n',
+  });
   const grep = await inspect({ action: 'grep', pattern: 'fitBlocks', mode: 'content', topK: 5 });
-  assert.ok(grep.text.indexOf('src/a.ts') >= 0 && grep.text.indexOf('src/a.ts') < grep.text.indexOf('src/b.ts'), 'definition ranks first');
+  assert.ok(
+    grep.text.indexOf('src/a.ts') >= 0 && grep.text.indexOf('src/a.ts') < grep.text.indexOf('src/b.ts'),
+    'definition ranks first',
+  );
   assert.ok(grep.data.evidenceRefs.length >= 2);
   const search = await inspect({ action: 'search', query: 'fitBlocks' });
   assert.match(search.text, /partial|budget|scanned/i);

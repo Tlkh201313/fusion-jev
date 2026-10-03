@@ -19,12 +19,20 @@ function canonicalRetrievalTime(value: string): string {
   const significantFraction = (parts[2] ?? '').replace(/0+$/u, '');
   return `${second}.${significantFraction ? significantFraction.padEnd(3, '0') : '000'}Z`;
 }
-const urlSchema = z.url().refine(value => {
+const urlSchema = z.url().refine((value) => {
   try {
     const url = new URL(value);
-    return (url.protocol === 'http:' || url.protocol === 'https:') && Boolean(url.hostname)
-      && !url.username && !url.password && !/[\u0000-\u001f\u007f]/u.test(value) && wellFormedUtf16(value);
-  } catch { return false; }
+    return (
+      (url.protocol === 'http:' || url.protocol === 'https:') &&
+      Boolean(url.hostname) &&
+      !url.username &&
+      !url.password &&
+      !/[\u0000-\u001f\u007f]/u.test(value) &&
+      wellFormedUtf16(value)
+    );
+  } catch {
+    return false;
+  }
 }, 'Expected an HTTP(S) URL without credentials');
 
 export const researchImportSchema = z.strictObject({
@@ -32,9 +40,11 @@ export const researchImportSchema = z.strictObject({
   title: z.string().trim().min(1).max(1000).refine(wellFormedUtf16, 'Malformed Unicode').optional(),
   retrievedAt: z.iso.datetime({ offset: true }),
   passageId: z.string().trim().min(1).max(512).refine(wellFormedUtf16, 'Malformed Unicode'),
-  passage: z.string().refine(value => value.trim().length > 0, 'Passage must be nonempty')
+  passage: z
+    .string()
+    .refine((value) => value.trim().length > 0, 'Passage must be nonempty')
     .refine(wellFormedUtf16, 'Malformed Unicode')
-    .refine(value => Buffer.byteLength(value, 'utf8') <= MAX_PASSAGE_BYTES, 'Passage exceeds 256 KiB'),
+    .refine((value) => Buffer.byteLength(value, 'utf8') <= MAX_PASSAGE_BYTES, 'Passage exceeds 256 KiB'),
   sourceTool: z.enum(['host_search', 'host_browser', 'host_docs']),
 });
 
@@ -43,9 +53,15 @@ export type ResearchInput = z.input<typeof researchImportSchema>;
 export function importResearch(input: ResearchInput, evidence: EvidenceStore): EvidenceReceipt {
   const research = researchImportSchema.parse(input);
   return evidence.capture({
-    source: { kind: 'research', url: new URL(research.url).href, title: research.title,
-      retrievedAt: canonicalRetrievalTime(research.retrievedAt), passageId: research.passageId,
-      sourceTool: research.sourceTool, untrusted: true },
+    source: {
+      kind: 'research',
+      url: new URL(research.url).href,
+      title: research.title,
+      retrievedAt: canonicalRetrievalTime(research.retrievedAt),
+      passageId: research.passageId,
+      sourceTool: research.sourceTool,
+      untrusted: true,
+    },
     bytes: Buffer.from(research.passage, 'utf8'),
   });
 }

@@ -11,15 +11,29 @@ import { mcpToolNames, slimTools } from './catalog.js';
 import type { McpOptions, ToolContext } from './context.js';
 import { registerEvidenceTool } from './evidence-tool.js';
 import { registerInspectTool } from './inspect.js';
-import { registerChooseBatchTool, registerChooseTool, registerRouteBatchTool, registerRouteTool } from './routing-tools.js';
+import {
+  registerChooseBatchTool,
+  registerChooseTool,
+  registerRouteBatchTool,
+  registerRouteTool,
+} from './routing-tools.js';
 import { createToolSpecs, evidenceSchema, type ToolSpecs } from './schemas.js';
-import { registerAssistTool, registerGitTools, registerListTool, registerOverviewTool, registerReadTool,
-  registerSearchTool, registerWorkspaceTool } from './tools.js';
+import {
+  registerAssistTool,
+  registerGitTools,
+  registerListTool,
+  registerOverviewTool,
+  registerReadTool,
+  registerSearchTool,
+  registerWorkspaceTool,
+} from './tools.js';
 
 const assistanceByEvidence = new WeakMap<EvidenceStore, Map<string, AssistanceService>>();
 
-function createToolContext({ router, config, workspace, workspaceFactory, signal, evidence }: McpOptions,
-  requestSignal: (() => AbortSignal | undefined) | undefined): ToolContext {
+function createToolContext(
+  { router, config, workspace, workspaceFactory, signal, evidence }: McpOptions,
+  requestSignal: (() => AbortSignal | undefined) | undefined,
+): ToolContext {
   const evidenceStore = evidence ?? new EvidenceStore();
   const mergedSignal = (other: AbortSignal) => {
     const signals = [other, signal, requestSignal?.()].filter((item): item is AbortSignal => item !== undefined);
@@ -28,7 +42,8 @@ function createToolContext({ router, config, workspace, workspaceFactory, signal
   const getWorkspace = (root?: string): WorkspaceService => {
     if (root && !isAbsolute(root)) throw new WorkspaceError('INVALID_PATH', 'root must be an absolute directory');
     if (workspace) {
-      if (root && resolve(root) !== workspace.root) throw new WorkspaceError('INVALID_PATH', 'root does not match this server');
+      if (root && resolve(root) !== workspace.root)
+        throw new WorkspaceError('INVALID_PATH', 'root does not match this server');
       return workspace;
     }
     if (workspaceFactory) return workspaceFactory(root);
@@ -37,13 +52,26 @@ function createToolContext({ router, config, workspace, workspaceFactory, signal
   const getAssistance = (root?: string): AssistanceService => {
     const service = getWorkspace(root);
     let byRoot = assistanceByEvidence.get(evidenceStore);
-    if (!byRoot) { byRoot = new Map(); assistanceByEvidence.set(evidenceStore, byRoot); }
+    if (!byRoot) {
+      byRoot = new Map();
+      assistanceByEvidence.set(evidenceStore, byRoot);
+    }
     let assistance = byRoot.get(service.root);
-    if (!assistance) { assistance = new AssistanceService(service, router, evidenceStore); byRoot.set(service.root, assistance); }
+    if (!assistance) {
+      assistance = new AssistanceService(service, router, evidenceStore);
+      byRoot.set(service.root, assistance);
+    }
     return assistance;
   };
-  return { router, config, evidence: evidenceStore, getWorkspace, getAssistance, mergedSignal,
-    actionSignal: other => AbortSignal.any([mergedSignal(other), AbortSignal.timeout(15000)]) };
+  return {
+    router,
+    config,
+    evidence: evidenceStore,
+    getWorkspace,
+    getAssistance,
+    mergedSignal,
+    actionSignal: (other) => AbortSignal.any([mergedSignal(other), AbortSignal.timeout(15000)]),
+  };
 }
 
 function registerTools(server: McpServer, ctx: ToolContext, specs: ToolSpecs, hasWorkspace: boolean): void {
@@ -70,37 +98,68 @@ function registerTools(server: McpServer, ctx: ToolContext, specs: ToolSpecs, ha
  */
 function listTools(config: McpOptions['config'], specs: ToolSpecs, hasWorkspace: boolean) {
   const { securitySchemes } = specs;
-  const descriptors = new Map<string, { title: string; description: string; inputSchema: z.ZodType;
-    annotations: { readOnlyHint: boolean; destructiveHint: boolean; openWorldHint: boolean };
-    _meta: { securitySchemes: typeof securitySchemes } }>([
-    ['fusion_repo_overview', specs.overview], ['fusion_inspect', specs.inspect], ['fusion_list_files', specs.list],
-    ['fusion_read_file', specs.read], ['fusion_search_text', specs.search], ['fusion_git_status', specs.status],
-    ['fusion_git_diff', specs.diff], ['fusion_git_log', specs.log], ['fusion_workspace', specs.workspace],
-    ['fusion_choose', specs.choose], ['fusion_choose_batch', specs.chooseBatch], ['fusion_route', specs.route],
-    ['fusion_route_batch', specs.routeBatch], ['fusion_assist', specs.assist], ['fusion_evidence', specs.evidence],
+  const descriptors = new Map<
+    string,
+    {
+      title: string;
+      description: string;
+      inputSchema: z.ZodType;
+      annotations: { readOnlyHint: boolean; destructiveHint: boolean; openWorldHint: boolean };
+      _meta: { securitySchemes: typeof securitySchemes };
+    }
+  >([
+    ['fusion_repo_overview', specs.overview],
+    ['fusion_inspect', specs.inspect],
+    ['fusion_list_files', specs.list],
+    ['fusion_read_file', specs.read],
+    ['fusion_search_text', specs.search],
+    ['fusion_git_status', specs.status],
+    ['fusion_git_diff', specs.diff],
+    ['fusion_git_log', specs.log],
+    ['fusion_workspace', specs.workspace],
+    ['fusion_choose', specs.choose],
+    ['fusion_choose_batch', specs.chooseBatch],
+    ['fusion_route', specs.route],
+    ['fusion_route_batch', specs.routeBatch],
+    ['fusion_assist', specs.assist],
+    ['fusion_evidence', specs.evidence],
   ]);
   const slim = config.mcpProfile !== 'full' && hasWorkspace;
-  return { tools: mcpToolNames(config.mcpProfile, hasWorkspace).map(name => {
-    if (slim && slimTools[name]) return { name, ...slimTools[name]!, ...(config.http.oauth ? { securitySchemes, _meta: { securitySchemes } } : {}) };
-    const tool = descriptors.get(name)!;
-    return {
-      name, ...tool, securitySchemes,
-      inputSchema: name === 'fusion_evidence'
-        ? { type: 'object' as const, oneOf: evidenceSchema.options.map(option => z.toJSONSchema(option)) }
-        : z.toJSONSchema(tool.inputSchema) as { type: 'object'; [key: string]: unknown },
-    };
-  }) };
+  return {
+    tools: mcpToolNames(config.mcpProfile, hasWorkspace).map((name) => {
+      if (slim && slimTools[name])
+        return {
+          name,
+          ...slimTools[name]!,
+          ...(config.http.oauth ? { securitySchemes, _meta: { securitySchemes } } : {}),
+        };
+      const tool = descriptors.get(name)!;
+      return {
+        name,
+        ...tool,
+        securitySchemes,
+        inputSchema:
+          name === 'fusion_evidence'
+            ? { type: 'object' as const, oneOf: evidenceSchema.options.map((option) => z.toJSONSchema(option)) }
+            : (z.toJSONSchema(tool.inputSchema) as { type: 'object'; [key: string]: unknown }),
+      };
+    }),
+  };
 }
 
 export function createFusionMcpServer(options: McpOptions, requestSignal?: () => AbortSignal | undefined): McpServer {
   const { config, workspace, workspaceFactory } = options;
   const ctx = createToolContext(options, requestSignal);
   const hasWorkspace = Boolean(workspace || workspaceFactory);
-  const workspaceHint = workspace ? 'This server has a fixed workspace; omit root.'
-    : workspaceFactory ? 'Pass an approved absolute root (FUSION_WORKSPACE_ROOT/ALLOWED_ROOTS); path selects subdirectories.' : '';
+  const workspaceHint = workspace
+    ? 'This server has a fixed workspace; omit root.'
+    : workspaceFactory
+      ? 'Pass an approved absolute root (FUSION_WORKSPACE_ROOT/ALLOWED_ROOTS); path selects subdirectories.'
+      : '';
   const serverInfo = { name: 'fusion-jev', title: 'Fusion Jev', version: '0.3.0' };
   const server = new McpServer(serverInfo, {
-    instructions: `Fusion inspection tools: assist (short repo tasks), inspect (batched read/outline/symbol/grep/git), evidence (expand receipts). Run noisy commands via fusion-jev run -- cmd args (else npx -y fusion-jev@${serverInfo.version} run -- ...; --raw for small exact output; quote '--' in PowerShell). Host owns reasoning, edits, approvals. RTK/native are fallback. ${hasWorkspace ? workspaceHint : 'No workspace is exposed.'}`.trim(),
+    instructions:
+      `Fusion inspection tools: assist (short repo tasks), inspect (batched read/outline/symbol/grep/git), evidence (expand receipts). Run noisy commands via fusion-jev run -- cmd args (else npx -y fusion-jev@${serverInfo.version} run -- ...; --raw for small exact output; quote '--' in PowerShell). Host owns reasoning, edits, approvals. RTK/native are fallback. ${hasWorkspace ? workspaceHint : 'No workspace is exposed.'}`.trim(),
   });
   const specs = createToolSpecs(config);
   registerTools(server, ctx, specs, hasWorkspace);

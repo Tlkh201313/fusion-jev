@@ -49,28 +49,65 @@ const spec = [
 test('node:test spec reporter failures yield one diagnostic per failing test with test-file location', () => {
   const found = parseDiagnostics({ text: spec, sourceEvidenceId: 'spec' });
   const file = process.platform === 'win32' ? 'C:\\tmp\\diag\\x.test.mjs' : '/C:/tmp/diag/x.test.mjs';
-  assert.deepEqual(found.map(item => [item.severity, item.file, item.line, item.column, item.message]), [
-    ['error', file, 5, 10, 'sum handles negative offset: AssertionError [ERR_ASSERTION]: Expected values to be strictly equal: 0 !== 1'],
-    ['error', file, 7, 42, 'throws plain error: Error: boom here'],
-    ['error', file, 8, 70, 'nested fails: AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value: assert.ok(false)'],
-  ]);
-  assert.equal(Buffer.from(spec).subarray(found[0]!.startByte, found[0]!.endByte).toString(), '✖ sum handles negative offset (0.6203ms)');
+  assert.deepEqual(
+    found.map((item) => [item.severity, item.file, item.line, item.column, item.message]),
+    [
+      [
+        'error',
+        file,
+        5,
+        10,
+        'sum handles negative offset: AssertionError [ERR_ASSERTION]: Expected values to be strictly equal: 0 !== 1',
+      ],
+      ['error', file, 7, 42, 'throws plain error: Error: boom here'],
+      [
+        'error',
+        file,
+        8,
+        70,
+        'nested fails: AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value: assert.ok(false)',
+      ],
+    ],
+  );
+  assert.equal(
+    Buffer.from(spec).subarray(found[0]!.startByte, found[0]!.endByte).toString(),
+    '✖ sum handles negative offset (0.6203ms)',
+  );
   assert.ok(found[0]!.startByte > spec.indexOf('failing tests:'));
 });
 
 test('node:test spec failures without the trailing summary still name the failing test', () => {
-  const found = parseDiagnostics({ text: '✔ ok (1ms)\n✖ breaks (2.1ms)\n  ✖ inner (0.3ms)\n', sourceEvidenceId: 'spec' });
-  assert.deepEqual(found.map(item => [item.message, item.file]), [['breaks', undefined], ['inner', undefined]]);
+  const found = parseDiagnostics({
+    text: '✔ ok (1ms)\n✖ breaks (2.1ms)\n  ✖ inner (0.3ms)\n',
+    sourceEvidenceId: 'spec',
+  });
+  assert.deepEqual(
+    found.map((item) => [item.message, item.file]),
+    [
+      ['breaks', undefined],
+      ['inner', undefined],
+    ],
+  );
 });
 
 test('node:test spec location falls back to the "test at" line when no file frame exists', () => {
-  const found = parseDiagnostics({ text: '✖ failing tests:\n\ntest at a.test.mjs:3:1\n✖ t (1ms)\n  Error: x\n      at run (node:internal/x:1:1)\n', sourceEvidenceId: 's' });
-  assert.deepEqual(found.map(item => [item.message, item.file, item.line, item.column]), [['t: Error: x', 'a.test.mjs', 3, 1]]);
+  const found = parseDiagnostics({
+    text: '✖ failing tests:\n\ntest at a.test.mjs:3:1\n✖ t (1ms)\n  Error: x\n      at run (node:internal/x:1:1)\n',
+    sourceEvidenceId: 's',
+  });
+  assert.deepEqual(
+    found.map((item) => [item.message, item.file, item.line, item.column]),
+    [['t: Error: x', 'a.test.mjs', 3, 1]],
+  );
 });
 
 test('node:test TAP reporter failures still use the not ok path', () => {
-  const tap = 'TAP version 13\n# Subtest: sum handles negative offset\nnot ok 4 - sum handles negative offset\n  ---\n  error: |-\n    Expected values to be strictly equal:\n  ...\n';
-  assert.deepEqual(parseDiagnostics({ text: tap, sourceEvidenceId: 'tap' }).map(item => item.message), ['sum handles negative offset']);
+  const tap =
+    'TAP version 13\n# Subtest: sum handles negative offset\nnot ok 4 - sum handles negative offset\n  ---\n  error: |-\n    Expected values to be strictly equal:\n  ...\n';
+  assert.deepEqual(
+    parseDiagnostics({ text: tap, sourceEvidenceId: 'tap' }).map((item) => item.message),
+    ['sum handles negative offset'],
+  );
 });
 
 const gitLog = [
@@ -89,10 +126,10 @@ const gitLog = [
   "     expectedStdout: '', expectedStderr: 'file.ts(3,4): error TS2345: expected string\\n',",
   "-  const line = 'src/a.ts(2,4): error TS1000: wrong type';",
   "+  const line = 'src/a.ts(2,4): error TS1000: wrong type';",
-  "+file.ts(3,4): error TS2322: Bad type",
-  "-main.cpp:4:8: error: missing",
-  " Error: broken",
-  "     at run (C:\\repo\\app.js:5:7)",
+  '+file.ts(3,4): error TS2322: Bad type',
+  '-main.cpp:4:8: error: missing',
+  ' Error: broken',
+  '     at run (C:\\repo\\app.js:5:7)',
   '',
   ' not ok 1 - historical',
   '\\ No newline at end of file',
@@ -109,6 +146,11 @@ test('git log -p history and diff hunks produce no diagnostics', () => {
 });
 
 test('real diagnostics after diff content are still recognized', () => {
-  const text = 'diff --git a/x b/x\n@@ -1 +1 @@\n+file.ts(1,1): error TS1: old\n' + 'src/now.ts(2,3): error TS2322: current failure\n';
-  assert.deepEqual(parseDiagnostics({ text, sourceEvidenceId: 'mix' }).map(item => [item.file, item.message]), [['src/now.ts', 'current failure']]);
+  const text =
+    'diff --git a/x b/x\n@@ -1 +1 @@\n+file.ts(1,1): error TS1: old\n' +
+    'src/now.ts(2,3): error TS2322: current failure\n';
+  assert.deepEqual(
+    parseDiagnostics({ text, sourceEvidenceId: 'mix' }).map((item) => [item.file, item.message]),
+    [['src/now.ts', 'current failure']],
+  );
 });

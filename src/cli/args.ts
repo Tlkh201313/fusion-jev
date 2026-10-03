@@ -14,7 +14,11 @@ function positiveInteger(value: string, label: string, minimum = 1): number {
 }
 
 export interface RunArgs {
-  raw: boolean; timeoutMs?: number; maxCaptureBytes?: number; cwd?: string; argv: [string, ...string[]];
+  raw: boolean;
+  timeoutMs?: number;
+  maxCaptureBytes?: number;
+  cwd?: string;
+  argv: [string, ...string[]];
 }
 
 /** Parses the arguments after `run`: options, a `--` separator, then the program and its argv. */
@@ -25,7 +29,8 @@ export function parseRunArgs(args: string[]): RunArgs {
   for (const option of args.slice(0, separator)) {
     if (option === '--raw') parsed.raw = true;
     else if (option.startsWith('--timeout-ms=')) parsed.timeoutMs = positiveInteger(option.slice(13), 'timeout-ms');
-    else if (option.startsWith('--max-capture-bytes=')) parsed.maxCaptureBytes = positiveInteger(option.slice(20), 'max-capture-bytes');
+    else if (option.startsWith('--max-capture-bytes='))
+      parsed.maxCaptureBytes = positiveInteger(option.slice(20), 'max-capture-bytes');
     else if (option.startsWith('--cwd=')) {
       parsed.cwd = option.slice(6);
       if (!isAbsolute(parsed.cwd)) throw new UsageError('Command cwd must be absolute');
@@ -35,7 +40,12 @@ export function parseRunArgs(args: string[]): RunArgs {
   return parsed;
 }
 
-export interface EvidenceArgs { id: string; raw: boolean; startByte: number; maxBytes: number }
+export interface EvidenceArgs {
+  id: string;
+  raw: boolean;
+  startByte: number;
+  maxBytes: number;
+}
 
 /** Parses the arguments after `evidence`: a receipt ID and paging options. */
 export function parseEvidenceArgs(args: string[]): EvidenceArgs {
@@ -60,16 +70,20 @@ export interface MainArgs {
 
 /** Separates the --provider-env option from the command words. */
 export function splitProviderEnv(argv: string[]): MainArgs {
-  const given = argv.filter(arg => arg.startsWith(PROVIDER_ENV));
+  const given = argv.filter((arg) => arg.startsWith(PROVIDER_ENV));
   if (given.length > 1) throw new UsageError('Specify --env-file only once');
-  return { args: argv.filter(arg => !arg.startsWith(PROVIDER_ENV)), providerEnv: given[0]?.slice(PROVIDER_ENV.length) };
+  return {
+    args: argv.filter((arg) => !arg.startsWith(PROVIDER_ENV)),
+    providerEnv: given[0]?.slice(PROVIDER_ENV.length),
+  };
 }
 
 export function assertSetupArgs(args: string[]): void {
-  if (args.slice(1).some(arg => arg !== '--dry-run') || args.filter(arg => arg === '--dry-run').length > 1)
+  if (args.slice(1).some((arg) => arg !== '--dry-run') || args.filter((arg) => arg === '--dry-run').length > 1)
     throw new UsageError('Usage: fusion-jev setup [--dry-run] [--provider-env=ABSOLUTE_PATH]');
 }
 
 export function assertEnvFileArgs(args: string[], providerEnv: string | undefined): void {
-  if (args.length !== 3 || providerEnv !== undefined) throw new UsageError('Usage: fusion-jev config env-file <ABSOLUTE_PATH | --clear>');
+  if (args.length !== 3 || providerEnv !== undefined)
+    throw new UsageError('Usage: fusion-jev config env-file <ABSOLUTE_PATH | --clear>');
 }

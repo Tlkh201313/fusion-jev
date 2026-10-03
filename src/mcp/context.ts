@@ -6,8 +6,12 @@ import type { WorkspaceService } from '../workspace.js';
 export type { RoutingService } from '../types.js';
 
 export interface McpOptions {
-  router: RoutingService; config: FusionConfig; workspace?: WorkspaceService;
-  workspaceFactory?: (root?: string) => WorkspaceService; signal?: AbortSignal; evidence?: EvidenceStore;
+  router: RoutingService;
+  config: FusionConfig;
+  workspace?: WorkspaceService;
+  workspaceFactory?: (root?: string) => WorkspaceService;
+  signal?: AbortSignal;
+  evidence?: EvidenceStore;
 }
 
 /** Per-server state and helpers every tool registration shares. */

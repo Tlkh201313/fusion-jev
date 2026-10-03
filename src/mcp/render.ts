@@ -29,14 +29,21 @@ export function toolError(text: string) {
 
 export function workspaceFailure(error: unknown) {
   const { code, message } = workspaceFailureInfo(error);
-  return { isError: true, content: [{ type: 'text' as const, text: `${code}: ${message}` }],
-    structuredContent: { error: { code, message } } };
+  return {
+    isError: true,
+    content: [{ type: 'text' as const, text: `${code}: ${message}` }],
+    structuredContent: { error: { code, message } },
+  };
 }
 
 const MCP_RESULT_LIMIT = 50;
-export const resultLimit = (requested: number | undefined, fallback: number) => Math.min(requested ?? fallback, MCP_RESULT_LIMIT);
+export const resultLimit = (requested: number | undefined, fallback: number) =>
+  Math.min(requested ?? fallback, MCP_RESULT_LIMIT);
 /** True when the caller asked for more results than one MCP call returns. */
-export const exceedsResultLimit = (requested: number | undefined) => requested !== undefined && requested > MCP_RESULT_LIMIT;
-export const limitNotice = (requested: number | undefined) => exceedsResultLimit(requested)
-  ? `LIMIT APPLIED: maxResults=${MCP_RESULT_LIMIT}; use nextOffset if more results remain.\n` : '';
+export const exceedsResultLimit = (requested: number | undefined) =>
+  requested !== undefined && requested > MCP_RESULT_LIMIT;
+export const limitNotice = (requested: number | undefined) =>
+  exceedsResultLimit(requested)
+    ? `LIMIT APPLIED: maxResults=${MCP_RESULT_LIMIT}; use nextOffset if more results remain.\n`
+    : '';
 export const appliedLimit = (requested: number) => ({ requested, applied: MCP_RESULT_LIMIT });

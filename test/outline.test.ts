@@ -4,7 +4,9 @@ import { buildOutline, findSymbols, outlineLanguage, renderOutline, type Outline
 
 const outline = (language: OutlineLanguage, source: string) => buildOutline(language, source.split('\n'));
 const rows = (language: OutlineLanguage, source: string) =>
-  outline(language, source).symbols.map(s => `${s.parent ? `${s.parent}.` : ''}${s.name}:${s.kind}:${s.startLine}-${s.endLine}${s.exported ? ':x' : ''}`);
+  outline(language, source).symbols.map(
+    (s) => `${s.parent ? `${s.parent}.` : ''}${s.name}:${s.kind}:${s.startLine}-${s.endLine}${s.exported ? ':x' : ''}`,
+  );
 
 test('language detection by extension', () => {
   assert.equal(outlineLanguage('a/b.tsx'), 'typescript');
@@ -46,22 +48,55 @@ test('TypeScript: classes, members, arrows, braces inside strings, templates and
     'export const run = async () => 1;',
   ].join('\n');
   assert.deepEqual(rows('typescript', source), [
-    'Options:interface:3-3:x', 'Id:type:4-4:x', 'hidden:function:5-7',
-    'Router:class:8-18:x', 'Router.constructor:method:10-10:x', 'Router.route:method:11-14:x', 'Router.helper:method:15-17',
-    'main:function:19-23:x', 'VERSION:const:24-24:x', 'run:function:25-25:x',
+    'Options:interface:3-3:x',
+    'Id:type:4-4:x',
+    'hidden:function:5-7',
+    'Router:class:8-18:x',
+    'Router.constructor:method:10-10:x',
+    'Router.route:method:11-14:x',
+    'Router.helper:method:15-17',
+    'main:function:19-23:x',
+    'VERSION:const:24-24:x',
+    'run:function:25-25:x',
   ]);
 });
 
 test('TypeScript without semicolons closes unbraced declarations before the next one and flags them approximate', () => {
-  const result = outline('typescript', ['export const a = 1', 'export const b = 2', 'export function f() {', '}'].join('\n'));
-  assert.deepEqual(result.symbols.map(s => [s.name, s.startLine, s.endLine]), [['a', 1, 1], ['b', 2, 2], ['f', 3, 4]]);
+  const result = outline(
+    'typescript',
+    ['export const a = 1', 'export const b = 2', 'export function f() {', '}'].join('\n'),
+  );
+  assert.deepEqual(
+    result.symbols.map((s) => [s.name, s.startLine, s.endLine]),
+    [
+      ['a', 1, 1],
+      ['b', 2, 2],
+      ['f', 3, 4],
+    ],
+  );
   assert.equal(result.symbols[0]!.approx, true);
   assert.equal(result.symbols[2]!.approx, undefined);
 });
 
 test('JavaScript: function declarations, default exports and classes', () => {
-  const source = ['function a() {', '  return {', '    x: 1,', '  };', '}', 'export default function () {', '}', 'class B extends A {', '  static make() { return new B(); }', '}'].join('\n');
-  assert.deepEqual(rows('javascript', source), ['a:function:1-5', 'default:function:6-7:x', 'B:class:8-10', 'B.make:method:9-9:x']);
+  const source = [
+    'function a() {',
+    '  return {',
+    '    x: 1,',
+    '  };',
+    '}',
+    'export default function () {',
+    '}',
+    'class B extends A {',
+    '  static make() { return new B(); }',
+    '}',
+  ].join('\n');
+  assert.deepEqual(rows('javascript', source), [
+    'a:function:1-5',
+    'default:function:6-7:x',
+    'B:class:8-10',
+    'B.make:method:9-9:x',
+  ]);
 });
 
 test('Python: indentation ends, methods, decorators, docstrings, multi-line signatures', () => {
@@ -91,8 +126,11 @@ test('Python: indentation ends, methods, decorators, docstrings, multi-line sign
     '    pass',
   ].join('\n');
   assert.deepEqual(rows('python', source), [
-    'Service:class:3-15:x', 'Service.name:method:8-9:x', 'Service._private:method:11-15',
-    'run:function:17-20:x', '_hidden:function:22-23',
+    'Service:class:3-15:x',
+    'Service.name:method:8-9:x',
+    'Service._private:method:11-15',
+    'run:function:17-20:x',
+    '_hidden:function:22-23',
   ]);
 });
 
@@ -118,8 +156,14 @@ test('Go: functions, methods with receivers, structs, interfaces, types and cons
     '}',
   ].join('\n');
   assert.deepEqual(rows('go', source), [
-    'Server:struct:2-4:x', 'Handler:interface:5-7:x', 'ID:type:8-8:x', 'Max:const:9-9:x', 'Server.Start:method:10-13:x',
-    'helper:function:14-14', 'raw:var:15-16', 'Last:function:17-18:x',
+    'Server:struct:2-4:x',
+    'Handler:interface:5-7:x',
+    'ID:type:8-8:x',
+    'Max:const:9-9:x',
+    'Server.Start:method:10-13:x',
+    'helper:function:14-14',
+    'raw:var:15-16',
+    'Last:function:17-18:x',
   ]);
 });
 
@@ -146,9 +190,16 @@ test('Rust: pub items, impl blocks with methods, traits, lifetimes and char lite
     'const LIMIT: usize = 4;',
   ].join('\n');
   assert.deepEqual(rows('rust', source), [
-    'Point:struct:2-4:x', 'Point<T>:impl:5-10', 'Point<T>.new:method:6-6:x', 'Point<T>.peek:method:7-9',
-    'Shape:trait:11-13:x', 'Shape.area:method:12-12:x', 'Shape for Point<f64>:impl:14-16', 'Shape for Point<f64>.area:method:15-15:x',
-    'run:function:17-18:x', 'LIMIT:const:19-19',
+    'Point:struct:2-4:x',
+    'Point<T>:impl:5-10',
+    'Point<T>.new:method:6-6:x',
+    'Point<T>.peek:method:7-9',
+    'Shape:trait:11-13:x',
+    'Shape.area:method:12-12:x',
+    'Shape for Point<f64>:impl:14-16',
+    'Shape for Point<f64>.area:method:15-15:x',
+    'run:function:17-18:x',
+    'LIMIT:const:19-19',
   ]);
 });
 
@@ -178,8 +229,14 @@ test('Java: public types, annotations, generics, interfaces; enum constants are 
     '}',
   ].join('\n');
   assert.deepEqual(rows('java', source), [
-    'Repo:class:2-14:x', 'Repo.find:method:5-7:x', 'Repo.all:method:8-12', 'Repo.Mode:enum:13-13:x',
-    'Store:interface:15-17', 'Store.save:method:16-16', 'Color:enum:18-22', 'Color.code:method:21-21',
+    'Repo:class:2-14:x',
+    'Repo.find:method:5-7:x',
+    'Repo.all:method:8-12',
+    'Repo.Mode:enum:13-13:x',
+    'Store:interface:15-17',
+    'Store.save:method:16-16',
+    'Color:enum:18-22',
+    'Color.code:method:21-21',
   ]);
 });
 
@@ -201,19 +258,41 @@ test('C#: namespaces, Allman braces, properties, expression members', () => {
     '}',
   ].join('\n');
   assert.deepEqual(rows('csharp', source), [
-    'App.Core:namespace:1-14:x', 'App.Core.Engine:class:3-12:x', 'Engine.Count:property:5-5:x', 'Engine.Engine:method:6-6:x',
-    'Engine.RunAsync:method:7-10:x', 'Engine.Step:method:11-11', 'App.Core.IThing:interface:13-13',
+    'App.Core:namespace:1-14:x',
+    'App.Core.Engine:class:3-12:x',
+    'Engine.Count:property:5-5:x',
+    'Engine.Engine:method:6-6:x',
+    'Engine.RunAsync:method:7-10:x',
+    'Engine.Step:method:11-11',
+    'App.Core.IThing:interface:13-13',
   ]);
 });
 
 test('Markdown headings and rendering: exported first, findSymbols resolves Parent.member', () => {
-  const md = outline('markdown', ['# Title', 'text', '## Part', '```', '# not a heading', '```', '## Next', 'x'].join('\n'));
-  assert.deepEqual(md.symbols.map(s => [s.name, s.startLine, s.endLine]), [['Title', 1, 8], ['Part', 3, 6], ['Next', 7, 8]]);
+  const md = outline(
+    'markdown',
+    ['# Title', 'text', '## Part', '```', '# not a heading', '```', '## Next', 'x'].join('\n'),
+  );
+  assert.deepEqual(
+    md.symbols.map((s) => [s.name, s.startLine, s.endLine]),
+    [
+      ['Title', 1, 8],
+      ['Part', 3, 6],
+      ['Next', 7, 8],
+    ],
+  );
   const ts = outline('typescript', ['class A {', '  go() {}', '}', 'export function go() {}'].join('\n'));
   const rendered = renderOutline('src/a.ts', ts);
   assert.match(rendered, /exported:\n {2}4-4 function go\n.*internal:\n {2}1-3 class A\n {4}2-2 method go/s);
-  assert.deepEqual(findSymbols(ts.symbols, 'go').map(s => s.startLine), [4, 2], 'exported top-level first, then the member');
-  assert.deepEqual(findSymbols(ts.symbols, 'A.go').map(s => s.startLine), [2]);
+  assert.deepEqual(
+    findSymbols(ts.symbols, 'go').map((s) => s.startLine),
+    [4, 2],
+    'exported top-level first, then the member',
+  );
+  assert.deepEqual(
+    findSymbols(ts.symbols, 'A.go').map((s) => s.startLine),
+    [2],
+  );
   assert.deepEqual(findSymbols(ts.symbols, 'missing'), []);
 });
 

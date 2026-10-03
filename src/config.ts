@@ -11,7 +11,13 @@ function integer(value: string | undefined, fallback: number, name: string, mini
   return parsed;
 }
 
-function decimal(value: string | undefined, fallback: number, name: string, minimum = 0, maximum = Number.POSITIVE_INFINITY): number {
+function decimal(
+  value: string | undefined,
+  fallback: number,
+  name: string,
+  minimum = 0,
+  maximum = Number.POSITIVE_INFINITY,
+): number {
   if (value === undefined || value === '') return fallback;
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed < minimum || parsed > maximum) throw new ConfigError(`Invalid ${name}`);
@@ -32,7 +38,12 @@ function choices<T extends string>(value: string | undefined, fallback: T, allow
 }
 
 function list(value: string | undefined): string[] {
-  return value?.split(',').map(s => s.trim()).filter(Boolean) ?? [];
+  return (
+    value
+      ?.split(',')
+      .map((s) => s.trim())
+      .filter(Boolean) ?? []
+  );
 }
 
 export function loadConfig(env: Environment = process.env): FusionConfig {
@@ -42,7 +53,12 @@ export function loadConfig(env: Environment = process.env): FusionConfig {
     throw new ConfigError('JEV_MODEL must be an official Jev alias or versioned model ID');
   if (env.TYPESAFE_API_KEY && env.JEV_API_KEY && env.TYPESAFE_API_KEY !== env.JEV_API_KEY)
     throw new ConfigError('Conflicting TYPESAFE_API_KEY and JEV_API_KEY settings');
-  const oauthValues = [env.FUSION_OAUTH_ISSUER, env.FUSION_OAUTH_AUDIENCE, env.FUSION_OAUTH_JWKS_URL, env.FUSION_OAUTH_OWNER_SUBJECT];
+  const oauthValues = [
+    env.FUSION_OAUTH_ISSUER,
+    env.FUSION_OAUTH_AUDIENCE,
+    env.FUSION_OAUTH_JWKS_URL,
+    env.FUSION_OAUTH_OWNER_SUBJECT,
+  ];
   const oauthCount = oauthValues.filter(Boolean).length;
   if (oauthCount > 0 && oauthCount !== oauthValues.length) throw new ConfigError('OAuth settings must be complete');
   const config: FusionConfig = {
@@ -55,7 +71,11 @@ export function loadConfig(env: Environment = process.env): FusionConfig {
       inputUsdPerMillion: decimal(env.JEV_INPUT_USD_PER_MILLION, 0, 'JEV_INPUT_USD_PER_MILLION'),
       cachedInputUsdPerMillion: decimal(env.JEV_CACHED_INPUT_USD_PER_MILLION, 0, 'JEV_CACHED_INPUT_USD_PER_MILLION'),
       outputUsdPerMillion: decimal(env.JEV_OUTPUT_USD_PER_MILLION, 0, 'JEV_OUTPUT_USD_PER_MILLION'),
-      pricingConfigured: [env.JEV_INPUT_USD_PER_MILLION, env.JEV_CACHED_INPUT_USD_PER_MILLION, env.JEV_OUTPUT_USD_PER_MILLION].every(value => value !== undefined && value !== ''),
+      pricingConfigured: [
+        env.JEV_INPUT_USD_PER_MILLION,
+        env.JEV_CACHED_INPUT_USD_PER_MILLION,
+        env.JEV_OUTPUT_USD_PER_MILLION,
+      ].every((value) => value !== undefined && value !== ''),
     },
     gpt: {
       apiKey: env.OPENAI_API_KEY,
@@ -63,11 +83,24 @@ export function loadConfig(env: Environment = process.env): FusionConfig {
       model: env.OPENAI_MODEL ?? 'gpt-5.1',
       timeoutMs: integer(env.OPENAI_TIMEOUT_MS, 12000, 'OPENAI_TIMEOUT_MS', 1),
       inputUsdPerMillion: decimal(env.OPENAI_INPUT_USD_PER_MILLION, 0, 'OPENAI_INPUT_USD_PER_MILLION'),
-      cachedInputUsdPerMillion: decimal(env.OPENAI_CACHED_INPUT_USD_PER_MILLION, 0, 'OPENAI_CACHED_INPUT_USD_PER_MILLION'),
+      cachedInputUsdPerMillion: decimal(
+        env.OPENAI_CACHED_INPUT_USD_PER_MILLION,
+        0,
+        'OPENAI_CACHED_INPUT_USD_PER_MILLION',
+      ),
       outputUsdPerMillion: decimal(env.OPENAI_OUTPUT_USD_PER_MILLION, 0, 'OPENAI_OUTPUT_USD_PER_MILLION'),
-      pricingConfigured: [env.OPENAI_INPUT_USD_PER_MILLION, env.OPENAI_CACHED_INPUT_USD_PER_MILLION, env.OPENAI_OUTPUT_USD_PER_MILLION].every(value => value !== undefined && value !== ''),
+      pricingConfigured: [
+        env.OPENAI_INPUT_USD_PER_MILLION,
+        env.OPENAI_CACHED_INPUT_USD_PER_MILLION,
+        env.OPENAI_OUTPUT_USD_PER_MILLION,
+      ].every((value) => value !== undefined && value !== ''),
       maxOutputTokens: integer(env.OPENAI_MAX_OUTPUT_TOKENS, 512, 'OPENAI_MAX_OUTPUT_TOKENS', 1),
-      reasoningEffort: choices(env.OPENAI_REASONING_EFFORT, 'low', ['minimal', 'low', 'medium', 'high'], 'OPENAI_REASONING_EFFORT'),
+      reasoningEffort: choices(
+        env.OPENAI_REASONING_EFFORT,
+        'low',
+        ['minimal', 'low', 'medium', 'high'],
+        'OPENAI_REASONING_EFFORT',
+      ),
     },
     routing: {
       fallback: choices(env.FUSION_FALLBACK, 'host', ['host', 'gpt'], 'FUSION_FALLBACK'),
@@ -94,17 +127,27 @@ export function loadConfig(env: Environment = process.env): FusionConfig {
       allowedOrigins: list(env.FUSION_HTTP_ALLOWED_ORIGINS),
       maxBodyBytes: integer(env.FUSION_HTTP_MAX_BODY_BYTES, LIMITS.httpBodyBytes, 'FUSION_HTTP_MAX_BODY_BYTES', 1),
       // Both limits read FUSION_HTTP_MAX_BODY_BYTES (no separate research variable exists); only the unset defaults differ.
-      maxResearchBodyBytes: integer(env.FUSION_HTTP_MAX_BODY_BYTES, LIMITS.researchBodyBytes, 'FUSION_HTTP_MAX_BODY_BYTES', 1),
+      maxResearchBodyBytes: integer(
+        env.FUSION_HTTP_MAX_BODY_BYTES,
+        LIMITS.researchBodyBytes,
+        'FUSION_HTTP_MAX_BODY_BYTES',
+        1,
+      ),
       publicUrl: env.FUSION_PUBLIC_URL,
-      oauth: oauthCount ? {
-        issuer: env.FUSION_OAUTH_ISSUER!, audience: env.FUSION_OAUTH_AUDIENCE!,
-        jwksUrl: env.FUSION_OAUTH_JWKS_URL!, ownerSubject: env.FUSION_OAUTH_OWNER_SUBJECT!,
-        scopes: env.FUSION_OAUTH_SCOPES === undefined ? ['fusion:route'] : list(env.FUSION_OAUTH_SCOPES),
-      } : undefined,
+      oauth: oauthCount
+        ? {
+            issuer: env.FUSION_OAUTH_ISSUER!,
+            audience: env.FUSION_OAUTH_AUDIENCE!,
+            jwksUrl: env.FUSION_OAUTH_JWKS_URL!,
+            ownerSubject: env.FUSION_OAUTH_OWNER_SUBJECT!,
+            scopes: env.FUSION_OAUTH_SCOPES === undefined ? ['fusion:route'] : list(env.FUSION_OAUTH_SCOPES),
+          }
+        : undefined,
     },
     catalog: parseCatalog(env.FUSION_CATALOG_JSON),
   };
-  if (config.routing.maxCandidates > LIMITS.maxCandidates) throw new ConfigError('FUSION_MAX_CANDIDATES cannot exceed 254');
+  if (config.routing.maxCandidates > LIMITS.maxCandidates)
+    throw new ConfigError('FUSION_MAX_CANDIDATES cannot exceed 254');
   return config;
 }
 

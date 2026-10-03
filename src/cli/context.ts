@@ -2,7 +2,9 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 /** Where the running CLI lives. `selfUrl` is the entry module's import.meta.url (src/cli.ts under tsx, dist/cli.js when built). */
-export interface CliContext { selfUrl: string }
+export interface CliContext {
+  selfUrl: string;
+}
 
 export const selfPath = (context: CliContext): string => fileURLToPath(context.selfUrl);
 

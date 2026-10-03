@@ -1,5 +1,15 @@
 import { randomUUID } from 'node:crypto';
-import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  lstatSync,
+  readFileSync,
+  readdirSync,
+  realpathSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { createRequire } from 'node:module';
 import type Database from 'better-sqlite3';
@@ -11,23 +21,60 @@ export type EvidenceSource =
   | { kind: 'workspace'; root: string; path: string }
   | { kind: 'derived_workspace'; root: string; path: string; operation: 'list' | 'search'; query?: string }
   | { kind: 'command'; cwd: string; argv: string[]; channel: 'stdout' | 'stderr' }
-  | { kind: 'research'; url: string; title?: string; retrievedAt: string; passageId: string; sourceTool: 'host_search' | 'host_browser' | 'host_docs'; untrusted: true };
-export interface EvidenceCapture { source: EvidenceSource; bytes: Buffer; originalBytes?: number | null; redacted?: boolean; truncated?: boolean }
+  | {
+      kind: 'research';
+      url: string;
+      title?: string;
+      retrievedAt: string;
+      passageId: string;
+      sourceTool: 'host_search' | 'host_browser' | 'host_docs';
+      untrusted: true;
+    };
+export interface EvidenceCapture {
+  source: EvidenceSource;
+  bytes: Buffer;
+  originalBytes?: number | null;
+  redacted?: boolean;
+  truncated?: boolean;
+}
 export interface EvidenceReceipt {
-  id: string; sha256: string; storedBytes: number; originalBytes: number | null;
-  redacted: boolean; truncated: boolean; expiresAt: number; source: EvidenceSource;
+  id: string;
+  sha256: string;
+  storedBytes: number;
+  originalBytes: number | null;
+  redacted: boolean;
+  truncated: boolean;
+  expiresAt: number;
+  source: EvidenceSource;
 }
 export type EvidencePage =
   | { status: 'ok' | 'stale'; receipt: EvidenceReceipt; startByte: number; nextByte: number | null; dataBase64: string }
   | { status: 'missing' | 'expired' | 'hash_mismatch'; id: string };
 
-interface Entry { receipt: EvidenceReceipt; bytes: Buffer; sourceHash?: string; canonicalPath?: string; order: number }
+interface Entry {
+  receipt: EvidenceReceipt;
+  bytes: Buffer;
+  sourceHash?: string;
+  canonicalPath?: string;
+  order: number;
+}
 const MAX_CAPTURE = LIMITS.captureBytes;
 const MAX_PAGE = LIMITS.pageBytes;
 const DEFAULT_PAGE = LIMITS.defaultPageBytes;
 const MAX_DISK_FILE = LIMITS.diskFileBytes;
 const RECEIPT_TTL_MS = LIMITS.receiptTtlMs;
-const EXCLUDED = new Set(['.git', 'node_modules', 'dist', '.next', '.ssh', '.aws', '.azure', '.gnupg', '.codex', '.npmrc']);
+const EXCLUDED = new Set([
+  '.git',
+  'node_modules',
+  'dist',
+  '.next',
+  '.ssh',
+  '.aws',
+  '.azure',
+  '.gnupg',
+  '.codex',
+  '.npmrc',
+]);
 // The native SQLite binding is loaded only when a persistent store is opened, so
 // in-memory stores (fusion-jev run --raw and small complete outputs) skip its cost.
 let sqlite: typeof Database | undefined;
@@ -36,8 +83,12 @@ const openDatabase = (path: string): Database.Database =>
 const hash = sha256Hex;
 type ResearchSource = Extract<EvidenceSource, { kind: 'research' }>;
 function sameResearchSource(left: ResearchSource, right: ResearchSource): boolean {
-  return left.url === right.url && left.retrievedAt === right.retrievedAt
-    && left.passageId === right.passageId && left.sourceTool === right.sourceTool;
+  return (
+    left.url === right.url &&
+    left.retrievedAt === right.retrievedAt &&
+    left.passageId === right.passageId &&
+    left.sourceTool === right.sourceTool
+  );
 }
 
 function researchKey(source: ResearchSource): string {
@@ -45,35 +96,70 @@ function researchKey(source: ResearchSource): string {
 }
 
 const receiptFileName = /^[a-f0-9-]{36}\.json$/;
-const orphanTemporaryName = /^(?:[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}|\.research-provenance-[a-f0-9]{64}-[a-f0-9-]{36})\.tmp$/;
+const orphanTemporaryName =
+  /^(?:[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}|\.research-provenance-[a-f0-9]{64}-[a-f0-9-]{36})\.tmp$/;
 const provenanceFileName = /^\.research-provenance-[a-f0-9]{64}\.json$/;
 const receiptId = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
-interface ProvenanceRow { key: string; id: string; sha256: string; expiresAt: number }
-interface ReceiptRow { id: string; sha256: string; storedBytes: number; expiresAt: number; sequence: number }
+interface ProvenanceRow {
+  key: string;
+  id: string;
+  sha256: string;
+  expiresAt: number;
+}
+interface ReceiptRow {
+  id: string;
+  sha256: string;
+  storedBytes: number;
+  expiresAt: number;
+  sequence: number;
+}
 
 function redactKnownSecrets(input: Buffer): { bytes: Buffer; redacted: boolean } {
   // Decode with replacement for pattern detection. If nothing matches, return the untouched raw bytes.
   const text = new TextDecoder('utf-8').decode(input);
   const safe = text
-    .replace(/^(\s*(?:TYPESAFE_API_KEY|JEV_API_KEY|TEAMOROUTER_API_KEY|OPENAI_API_KEY|FUSION_HTTP_BEARER_TOKEN)\s*=\s*)[^\r\n]+/gim, '$1[REDACTED]')
+    .replace(
+      /^(\s*(?:TYPESAFE_API_KEY|JEV_API_KEY|TEAMOROUTER_API_KEY|OPENAI_API_KEY|FUSION_HTTP_BEARER_TOKEN)\s*=\s*)[^\r\n]+/gim,
+      '$1[REDACTED]',
+    )
     .replace(/^(\s*Authorization\s*:\s*Bearer\s+)\S+/gim, '$1[REDACTED]')
-    .replace(/("(?:TYPESAFE_API_KEY|JEV_API_KEY|TEAMOROUTER_API_KEY|OPENAI_API_KEY|FUSION_HTTP_BEARER_TOKEN)"\s*[:=]\s*")(?:\\.|[^"\\])*(")/gi, '$1[REDACTED]$2')
-    .replace(/('(?:TYPESAFE_API_KEY|JEV_API_KEY|TEAMOROUTER_API_KEY|OPENAI_API_KEY|FUSION_HTTP_BEARER_TOKEN)'\s*[:=]\s*')(?:\\.|[^'\\])*(')/gi, '$1[REDACTED]$2');
+    .replace(
+      /("(?:TYPESAFE_API_KEY|JEV_API_KEY|TEAMOROUTER_API_KEY|OPENAI_API_KEY|FUSION_HTTP_BEARER_TOKEN)"\s*[:=]\s*")(?:\\.|[^"\\])*(")/gi,
+      '$1[REDACTED]$2',
+    )
+    .replace(
+      /('(?:TYPESAFE_API_KEY|JEV_API_KEY|TEAMOROUTER_API_KEY|OPENAI_API_KEY|FUSION_HTTP_BEARER_TOKEN)'\s*[:=]\s*')(?:\\.|[^'\\])*(')/gi,
+      '$1[REDACTED]$2',
+    );
   return { bytes: safe === text ? input : Buffer.from(safe), redacted: safe !== text };
 }
 
 function canonicalWorkspace(root: string, path: string): string {
-  if (!path || isAbsolute(path) || path.includes('\0') || path.split(/[\\/]/).some(part => {
-    const lower = part.toLowerCase(); return EXCLUDED.has(lower) || lower === '.env' || lower.startsWith('.env.');
-  })) throw new Error('Invalid workspace path');
+  if (
+    !path ||
+    isAbsolute(path) ||
+    path.includes('\0') ||
+    path.split(/[\\/]/).some((part) => {
+      const lower = part.toLowerCase();
+      return EXCLUDED.has(lower) || lower === '.env' || lower.startsWith('.env.');
+    })
+  )
+    throw new Error('Invalid workspace path');
   const canonicalRoot = realpathSync(root);
   const candidate = resolve(canonicalRoot, path);
-  if (candidate !== canonicalRoot && !candidate.startsWith(canonicalRoot + sep)) throw new Error('Invalid workspace path');
+  if (candidate !== canonicalRoot && !candidate.startsWith(canonicalRoot + sep))
+    throw new Error('Invalid workspace path');
   const actual = realpathSync(candidate);
   if (actual !== canonicalRoot && !actual.startsWith(canonicalRoot + sep)) throw new Error('Invalid workspace path');
-  if (relative(canonicalRoot, actual).split(/[\\/]/).some(part => {
-    const lower = part.toLowerCase(); return EXCLUDED.has(lower) || lower === '.env' || lower.startsWith('.env.');
-  })) throw new Error('Invalid workspace path');
+  if (
+    relative(canonicalRoot, actual)
+      .split(/[\\/]/)
+      .some((part) => {
+        const lower = part.toLowerCase();
+        return EXCLUDED.has(lower) || lower === '.env' || lower.startsWith('.env.');
+      })
+  )
+    throw new Error('Invalid workspace path');
   return actual;
 }
 
@@ -81,31 +167,66 @@ function validSource(value: unknown): value is EvidenceSource {
   if (!value || typeof value !== 'object') return false;
   const source = value as Record<string, unknown>;
   if (source.kind === 'workspace') return typeof source.root === 'string' && typeof source.path === 'string';
-  if (source.kind === 'derived_workspace') return typeof source.root === 'string' && typeof source.path === 'string'
-    && (source.operation === 'list' || source.operation === 'search')
-    && (source.query === undefined || typeof source.query === 'string');
-  if (source.kind === 'command') return typeof source.cwd === 'string' && Array.isArray(source.argv)
-    && source.argv.every(item => typeof item === 'string') && (source.channel === 'stdout' || source.channel === 'stderr');
-  if (source.kind === 'research') return typeof source.url === 'string' && typeof source.retrievedAt === 'string'
-    && typeof source.passageId === 'string' && (source.title === undefined || typeof source.title === 'string')
-    && ['host_search', 'host_browser', 'host_docs'].includes(String(source.sourceTool)) && source.untrusted === true;
+  if (source.kind === 'derived_workspace')
+    return (
+      typeof source.root === 'string' &&
+      typeof source.path === 'string' &&
+      (source.operation === 'list' || source.operation === 'search') &&
+      (source.query === undefined || typeof source.query === 'string')
+    );
+  if (source.kind === 'command')
+    return (
+      typeof source.cwd === 'string' &&
+      Array.isArray(source.argv) &&
+      source.argv.every((item) => typeof item === 'string') &&
+      (source.channel === 'stdout' || source.channel === 'stderr')
+    );
+  if (source.kind === 'research')
+    return (
+      typeof source.url === 'string' &&
+      typeof source.retrievedAt === 'string' &&
+      typeof source.passageId === 'string' &&
+      (source.title === undefined || typeof source.title === 'string') &&
+      ['host_search', 'host_browser', 'host_docs'].includes(String(source.sourceTool)) &&
+      source.untrusted === true
+    );
   return false;
 }
 
-function validDiskEntry(value: unknown, id: string): value is { receipt: EvidenceReceipt; bytes: string; sourceHash?: string; canonicalPath?: string; order?: number } {
+function validDiskEntry(
+  value: unknown,
+  id: string,
+): value is { receipt: EvidenceReceipt; bytes: string; sourceHash?: string; canonicalPath?: string; order?: number } {
   if (!value || typeof value !== 'object') return false;
   const disk = value as Record<string, unknown>;
   if (typeof disk.bytes !== 'string' || !disk.receipt || typeof disk.receipt !== 'object') return false;
   const receipt = disk.receipt as Record<string, unknown>;
-  if (receipt.id !== id || typeof receipt.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(receipt.sha256)
-    || !Number.isSafeInteger(receipt.storedBytes) || (receipt.storedBytes as number) < 0 || (receipt.storedBytes as number) > MAX_CAPTURE
-    || !(receipt.originalBytes === null || Number.isSafeInteger(receipt.originalBytes) && (receipt.originalBytes as number) >= 0)
-    || typeof receipt.redacted !== 'boolean' || typeof receipt.truncated !== 'boolean'
-    || !Number.isSafeInteger(receipt.expiresAt) || !validSource(receipt.source)
-    || !(disk.order === undefined || Number.isSafeInteger(disk.order) && (disk.order as number) >= 0)) return false;
+  if (
+    receipt.id !== id ||
+    typeof receipt.sha256 !== 'string' ||
+    !/^[a-f0-9]{64}$/.test(receipt.sha256) ||
+    !Number.isSafeInteger(receipt.storedBytes) ||
+    (receipt.storedBytes as number) < 0 ||
+    (receipt.storedBytes as number) > MAX_CAPTURE ||
+    !(
+      receipt.originalBytes === null ||
+      (Number.isSafeInteger(receipt.originalBytes) && (receipt.originalBytes as number) >= 0)
+    ) ||
+    typeof receipt.redacted !== 'boolean' ||
+    typeof receipt.truncated !== 'boolean' ||
+    !Number.isSafeInteger(receipt.expiresAt) ||
+    !validSource(receipt.source) ||
+    !(disk.order === undefined || (Number.isSafeInteger(disk.order) && (disk.order as number) >= 0))
+  )
+    return false;
   const source = receipt.source as EvidenceSource;
-  if (source.kind === 'workspace') return typeof disk.sourceHash === 'string' && /^[a-f0-9]{64}$/.test(disk.sourceHash)
-    && typeof disk.canonicalPath === 'string' && isAbsolute(disk.canonicalPath);
+  if (source.kind === 'workspace')
+    return (
+      typeof disk.sourceHash === 'string' &&
+      /^[a-f0-9]{64}$/.test(disk.sourceHash) &&
+      typeof disk.canonicalPath === 'string' &&
+      isAbsolute(disk.canonicalPath)
+    );
   return disk.sourceHash === undefined && disk.canonicalPath === undefined;
 }
 
@@ -119,14 +240,29 @@ export class EvidenceStore {
   private nextOrder = 0;
   private schemaReady = false;
 
-  constructor(options: { storageDir?: string; verifiedStorage?: VerifiedStorage; clock?: () => number; maxEntries?: number; maxTotalBytes?: number; removeFile?: (path: string) => void } = {}) {
+  constructor(
+    options: {
+      storageDir?: string;
+      verifiedStorage?: VerifiedStorage;
+      clock?: () => number;
+      maxEntries?: number;
+      maxTotalBytes?: number;
+      removeFile?: (path: string) => void;
+    } = {},
+  ) {
     this.clock = options.clock ?? Date.now;
     this.maxEntries = options.maxEntries ?? 128;
     this.maxTotalBytes = options.maxTotalBytes ?? 32 * 1024 * 1024;
-    this.removeFile = options.removeFile ?? (path => rmSync(path, { force: true }));
-    if (!Number.isSafeInteger(this.maxEntries) || this.maxEntries < 1 || !Number.isSafeInteger(this.maxTotalBytes) || this.maxTotalBytes < 1)
+    this.removeFile = options.removeFile ?? ((path) => rmSync(path, { force: true }));
+    if (
+      !Number.isSafeInteger(this.maxEntries) ||
+      this.maxEntries < 1 ||
+      !Number.isSafeInteger(this.maxTotalBytes) ||
+      this.maxTotalBytes < 1
+    )
       throw new RangeError('Invalid evidence capacity');
-    if (options.verifiedStorage !== undefined && !isVerifiedStorage(options.verifiedStorage)) throw new TypeError('Unverified evidence storage');
+    if (options.verifiedStorage !== undefined && !isVerifiedStorage(options.verifiedStorage))
+      throw new TypeError('Unverified evidence storage');
     // A caller that already verified the directory (asynchronously, overlapped with other work) passes the proof in.
     const storage = options.verifiedStorage ?? (options.storageDir ? verifyStorageSync(options.storageDir) : undefined);
     this.storageDir = storage?.path;
@@ -135,18 +271,31 @@ export class EvidenceStore {
       this.cleanupPending();
       this.migrateLegacyProvenance();
       this.reconcileProvenance();
-      for (const file of readdirSync(this.storageDir).filter(name => orphanTemporaryName.test(name))) {
+      for (const file of readdirSync(this.storageDir).filter((name) => orphanTemporaryName.test(name))) {
         const target = join(this.storageDir, file);
         try {
           const info = lstatSync(target);
           if (!info.isFile() || info.isSymbolicLink()) continue;
           const id = file.slice(0, -4);
-          if (receiptId.test(id) && this.withProvenanceDb(db => Boolean(
-            db.prepare(`SELECT id FROM inflight WHERE id = ?
+          if (
+            receiptId.test(id) &&
+            this.withProvenanceDb((db) =>
+              Boolean(
+                db
+                  .prepare(
+                    `SELECT id FROM inflight WHERE id = ?
               UNION SELECT id FROM cleanup_pending WHERE id = ?
-              UNION SELECT id FROM receipts WHERE id = ?`).get(id, id, id)))) continue;
+              UNION SELECT id FROM receipts WHERE id = ?`,
+                  )
+                  .get(id, id, id),
+              ),
+            )
+          )
+            continue;
           if (this.clock() - info.mtimeMs > RECEIPT_TTL_MS) this.removeFile(target);
-        } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+        }
       }
     }
   }
@@ -161,15 +310,19 @@ export class EvidenceStore {
     const facts = {
       redacted: Boolean(input.redacted || sanitized.redacted),
       truncated: Boolean(input.truncated || sanitized.bytes.length > MAX_CAPTURE),
-      originalBytes: input.originalBytes === null ? null : input.originalBytes ?? input.bytes.length,
+      originalBytes: input.originalBytes === null ? null : (input.originalBytes ?? input.bytes.length),
     };
     if (input.source.kind === 'workspace') {
       const reusable = this.findReusableWorkspaceReceipt(canonicalPath, sourceHash, facts, bytes);
       if (reusable) return reusable;
     }
     const receipt: EvidenceReceipt = {
-      id: randomUUID(), sha256: hash(bytes), storedBytes: bytes.length, ...facts,
-      expiresAt: this.clock() + RECEIPT_TTL_MS, source: structuredClone(input.source),
+      id: randomUUID(),
+      sha256: hash(bytes),
+      storedBytes: bytes.length,
+      ...facts,
+      expiresAt: this.clock() + RECEIPT_TTL_MS,
+      source: structuredClone(input.source),
     };
     const entry = { receipt, bytes, sourceHash, canonicalPath, order: ++this.nextOrder };
     if (this.storageDir) this.persistReceipt(entry, input.source);
@@ -202,17 +355,36 @@ export class EvidenceStore {
   }
 
   /** A live receipt for byte-identical content of the same unchanged file is returned instead of storing a second copy. */
-  private findReusableWorkspaceReceipt(canonicalPath: string | undefined, sourceHash: string | undefined,
-    facts: Pick<EvidenceReceipt, 'redacted' | 'truncated' | 'originalBytes'>, bytes: Buffer): EvidenceReceipt | undefined {
+  private findReusableWorkspaceReceipt(
+    canonicalPath: string | undefined,
+    sourceHash: string | undefined,
+    facts: Pick<EvidenceReceipt, 'redacted' | 'truncated' | 'originalBytes'>,
+    bytes: Buffer,
+  ): EvidenceReceipt | undefined {
     for (const entry of this.entries.values()) {
       const prior = entry.receipt;
-      if (entry.canonicalPath !== canonicalPath || entry.sourceHash !== sourceHash || prior.expiresAt <= this.clock()
-        || prior.redacted !== facts.redacted || prior.truncated !== facts.truncated
-        || prior.originalBytes !== facts.originalBytes || !entry.bytes.equals(bytes)) continue;
+      if (
+        entry.canonicalPath !== canonicalPath ||
+        entry.sourceHash !== sourceHash ||
+        prior.expiresAt <= this.clock() ||
+        prior.redacted !== facts.redacted ||
+        prior.truncated !== facts.truncated ||
+        prior.originalBytes !== facts.originalBytes ||
+        !entry.bytes.equals(bytes)
+      )
+        continue;
       // Another process may have evicted the persisted receipt; revalidate before reuse.
       if (this.storageDir) {
-        const active = this.withProvenanceDb(db => db.prepare('SELECT id, sha256, storedBytes, expiresAt FROM receipts WHERE id = ?').get(prior.id)) as ReceiptRow | undefined;
-        if (!active || active.sha256 !== prior.sha256 || active.expiresAt !== prior.expiresAt || !existsSync(join(this.storageDir, `${prior.id}.json`))) continue;
+        const active = this.withProvenanceDb((db) =>
+          db.prepare('SELECT id, sha256, storedBytes, expiresAt FROM receipts WHERE id = ?').get(prior.id),
+        ) as ReceiptRow | undefined;
+        if (
+          !active ||
+          active.sha256 !== prior.sha256 ||
+          active.expiresAt !== prior.expiresAt ||
+          !existsSync(join(this.storageDir, `${prior.id}.json`))
+        )
+          continue;
       }
       return structuredClone(prior);
     }
@@ -226,12 +398,19 @@ export class EvidenceStore {
     const file = join(this.storageDir!, receipt.id + '.json');
     const temporary = join(this.storageDir!, receipt.id + '.tmp');
     try {
-      writeFileSync(temporary, JSON.stringify({ ...entry, bytes: bytes.toString('base64') }), { mode: 0o600, flag: 'wx' });
+      writeFileSync(temporary, JSON.stringify({ ...entry, bytes: bytes.toString('base64') }), {
+        mode: 0o600,
+        flag: 'wx',
+      });
       renameSync(temporary, file);
       this.commitDiskReceipt(receipt);
       if (source.kind === 'research') this.assertResearchClaimCurrent(source, receipt);
     } catch (error) {
-      try { this.abandonReceipt(receipt); } catch { /* Durable pending cleanup is retried on the next operation. */ }
+      try {
+        this.abandonReceipt(receipt);
+      } catch {
+        /* Durable pending cleanup is retried on the next operation. */
+      }
       throw error;
     }
   }
@@ -250,22 +429,35 @@ export class EvidenceStore {
         this.schemaReady = true;
       }
       return work(db);
-    } finally { db.close(); }
+    } finally {
+      db.close();
+    }
   }
 
   private validateReceiptRow(row: ReceiptRow): void {
-    if (!receiptId.test(row.id) || !/^[a-f0-9]{64}$/.test(row.sha256)
-      || !Number.isSafeInteger(row.storedBytes) || row.storedBytes < 0 || row.storedBytes > MAX_CAPTURE
-      || !Number.isSafeInteger(row.expiresAt) || !Number.isSafeInteger(row.sequence) || row.sequence < 1)
+    if (
+      !receiptId.test(row.id) ||
+      !/^[a-f0-9]{64}$/.test(row.sha256) ||
+      !Number.isSafeInteger(row.storedBytes) ||
+      row.storedBytes < 0 ||
+      row.storedBytes > MAX_CAPTURE ||
+      !Number.isSafeInteger(row.expiresAt) ||
+      !Number.isSafeInteger(row.sequence) ||
+      row.sequence < 1
+    )
       throw new Error('Evidence receipt metadata corrupt');
   }
 
   private assertUniqueDiskGeneration(db: Database.Database): void {
     // Capture IDs are generated internally with randomUUID. A repeated ID across lifecycle
     // tables is an impossible API state; preserve every claim rather than guessing ownership.
-    const collision = db.prepare(`SELECT id FROM (
+    const collision = db
+      .prepare(
+        `SELECT id FROM (
       SELECT id FROM receipts UNION ALL SELECT id FROM inflight UNION ALL SELECT id FROM cleanup_pending
-    ) GROUP BY id HAVING count(*) > 1 LIMIT 1`).get();
+    ) GROUP BY id HAVING count(*) > 1 LIMIT 1`,
+      )
+      .get();
     if (collision) throw new Error('Evidence receipt generation collision');
   }
 
@@ -273,162 +465,245 @@ export class EvidenceStore {
     if (!receiptId.test(id)) throw new Error('Invalid evidence receipt ID');
     const file = join(this.storageDir!, id + '.' + extension);
     const info = lstatSync(file);
-    if (!info.isFile() || info.isSymbolicLink() || info.size > MAX_DISK_FILE
-      || process.platform !== 'win32' && ((info.mode & 0o077) !== 0 || process.getuid && info.uid !== process.getuid()))
+    if (
+      !info.isFile() ||
+      info.isSymbolicLink() ||
+      info.size > MAX_DISK_FILE ||
+      (process.platform !== 'win32' && ((info.mode & 0o077) !== 0 || (process.getuid && info.uid !== process.getuid())))
+    )
       throw new Error('Unsafe evidence file');
     const disk: unknown = JSON.parse(readFileSync(file, 'utf8'));
     if (!validDiskEntry(disk, id)) throw new Error('Invalid evidence metadata');
     const bytes = Buffer.from(disk.bytes, 'base64');
-    if (bytes.length !== disk.receipt.storedBytes || hash(bytes) !== disk.receipt.sha256
-      || row && (row.sha256 !== disk.receipt.sha256 || row.storedBytes !== bytes.length || row.expiresAt !== disk.receipt.expiresAt))
+    if (
+      bytes.length !== disk.receipt.storedBytes ||
+      hash(bytes) !== disk.receipt.sha256 ||
+      (row &&
+        (row.sha256 !== disk.receipt.sha256 ||
+          row.storedBytes !== bytes.length ||
+          row.expiresAt !== disk.receipt.expiresAt))
+    )
       throw new Error('Corrupt evidence receipt');
-    return { receipt: disk.receipt, bytes, sourceHash: disk.sourceHash, canonicalPath: disk.canonicalPath,
-      order: row?.sequence ?? disk.order ?? info.mtimeMs };
+    return {
+      receipt: disk.receipt,
+      bytes,
+      sourceHash: disk.sourceHash,
+      canonicalPath: disk.canonicalPath,
+      order: row?.sequence ?? disk.order ?? info.mtimeMs,
+    };
   }
 
   private removeReceiptRows(db: Database.Database, ids: string[]): void {
     for (const id of ids) {
-      db.prepare('INSERT INTO cleanup_pending (id, sha256, storedBytes, expiresAt) SELECT id, sha256, storedBytes, expiresAt FROM receipts WHERE id = ?').run(id);
+      db.prepare(
+        'INSERT INTO cleanup_pending (id, sha256, storedBytes, expiresAt) SELECT id, sha256, storedBytes, expiresAt FROM receipts WHERE id = ?',
+      ).run(id);
       db.prepare('DELETE FROM provenance WHERE id = ?').run(id);
       db.prepare('DELETE FROM receipts WHERE id = ?').run(id);
     }
   }
 
   private abandonReceipt(receipt: EvidenceReceipt): void {
-    this.withProvenanceDb(db => db.transaction(() => {
-      this.assertUniqueDiskGeneration(db);
-      db.prepare('DELETE FROM inflight WHERE id = ? AND sha256 = ? AND expiresAt = ?')
-        .run(receipt.id, receipt.sha256, receipt.expiresAt);
-      const active = db.prepare('SELECT sha256, expiresAt FROM receipts WHERE id = ?')
-        .get(receipt.id) as Pick<ReceiptRow, 'sha256' | 'expiresAt'> | undefined;
-      if (active && (active.sha256 !== receipt.sha256 || active.expiresAt !== receipt.expiresAt))
-        throw new Error('Evidence receipt generation collision');
-      if (active) this.removeReceiptRows(db, [receipt.id]);
-      else {
-        for (const extension of ['json', 'tmp'] as const) {
-          const path = join(this.storageDir!, `${receipt.id}.${extension}`);
-          if (existsSync(path)) {
-            const disk = this.readDiskEntry(receipt.id, undefined, extension);
-            if (disk.receipt.sha256 === receipt.sha256 && disk.receipt.expiresAt === receipt.expiresAt)
-              db.prepare('INSERT INTO cleanup_pending (id, sha256, storedBytes, expiresAt) VALUES (?, ?, ?, ?)')
-                .run(receipt.id, receipt.sha256, receipt.storedBytes, receipt.expiresAt);
+    this.withProvenanceDb((db) =>
+      db
+        .transaction(() => {
+          this.assertUniqueDiskGeneration(db);
+          db.prepare('DELETE FROM inflight WHERE id = ? AND sha256 = ? AND expiresAt = ?').run(
+            receipt.id,
+            receipt.sha256,
+            receipt.expiresAt,
+          );
+          const active = db.prepare('SELECT sha256, expiresAt FROM receipts WHERE id = ?').get(receipt.id) as
+            Pick<ReceiptRow, 'sha256' | 'expiresAt'> | undefined;
+          if (active && (active.sha256 !== receipt.sha256 || active.expiresAt !== receipt.expiresAt))
+            throw new Error('Evidence receipt generation collision');
+          if (active) this.removeReceiptRows(db, [receipt.id]);
+          else {
+            for (const extension of ['json', 'tmp'] as const) {
+              const path = join(this.storageDir!, `${receipt.id}.${extension}`);
+              if (existsSync(path)) {
+                const disk = this.readDiskEntry(receipt.id, undefined, extension);
+                if (disk.receipt.sha256 === receipt.sha256 && disk.receipt.expiresAt === receipt.expiresAt)
+                  db.prepare(
+                    'INSERT INTO cleanup_pending (id, sha256, storedBytes, expiresAt) VALUES (?, ?, ?, ?)',
+                  ).run(receipt.id, receipt.sha256, receipt.storedBytes, receipt.expiresAt);
+              }
+            }
           }
-        }
-      }
-    }).immediate());
+        })
+        .immediate(),
+    );
     this.entries.delete(receipt.id);
     this.cleanupPending();
   }
 
   private cleanupPending(): void {
     if (!this.storageDir) return;
-    const morePending = this.withProvenanceDb(db => db.transaction(() => {
-      this.assertUniqueDiskGeneration(db);
-      const stale = db.prepare('SELECT id, sha256, storedBytes, expiresAt FROM inflight WHERE expiresAt <= ? LIMIT 128')
-        .all(this.clock()) as Array<Pick<ReceiptRow, 'id' | 'sha256' | 'storedBytes' | 'expiresAt'>>;
-      for (const row of stale) {
-        db.prepare('INSERT INTO cleanup_pending (id, sha256, storedBytes, expiresAt) VALUES (?, ?, ?, ?)')
-          .run(row.id, row.sha256, row.storedBytes, row.expiresAt);
-        db.prepare('DELETE FROM inflight WHERE id = ?').run(row.id);
-      }
-      const pending = db.prepare('SELECT id, sha256, storedBytes, expiresAt FROM cleanup_pending ORDER BY expiresAt, id LIMIT 128')
-        .all() as Array<Pick<ReceiptRow, 'id' | 'sha256' | 'storedBytes' | 'expiresAt'>>;
-      for (const row of pending) {
-        if (!receiptId.test(row.id) || !/^[a-f0-9]{64}$/.test(row.sha256)) throw new Error('Evidence cleanup metadata corrupt');
-        const active = db.prepare('SELECT id FROM receipts WHERE id = ?').get(row.id);
-        if (!active) {
-          for (const extension of ['json', 'tmp'] as const) {
-            const path = join(this.storageDir!, `${row.id}.${extension}`);
-            try {
-              if (existsSync(path)) {
-                let replacement = false;
-                try {
-                  const disk = this.readDiskEntry(row.id, undefined, extension);
-                  replacement = disk.receipt.sha256 !== row.sha256 || disk.receipt.expiresAt !== row.expiresAt;
-                } catch { /* An invalid unindexed file cannot become trusted evidence. */ }
-                if (!replacement) this.removeFile(path);
-              }
-            } catch (error) {
-              if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw new Error('Evidence bounded storage cleanup failed', { cause: error });
-            }
+    const morePending = this.withProvenanceDb((db) =>
+      db
+        .transaction(() => {
+          this.assertUniqueDiskGeneration(db);
+          const stale = db
+            .prepare('SELECT id, sha256, storedBytes, expiresAt FROM inflight WHERE expiresAt <= ? LIMIT 128')
+            .all(this.clock()) as Array<Pick<ReceiptRow, 'id' | 'sha256' | 'storedBytes' | 'expiresAt'>>;
+          for (const row of stale) {
+            db.prepare('INSERT INTO cleanup_pending (id, sha256, storedBytes, expiresAt) VALUES (?, ?, ?, ?)').run(
+              row.id,
+              row.sha256,
+              row.storedBytes,
+              row.expiresAt,
+            );
+            db.prepare('DELETE FROM inflight WHERE id = ?').run(row.id);
           }
-        }
-        db.prepare('DELETE FROM cleanup_pending WHERE id = ?').run(row.id);
-        this.entries.delete(row.id);
-      }
-      return Boolean(db.prepare('SELECT id FROM cleanup_pending LIMIT 1').get());
-    }).immediate());
+          const pending = db
+            .prepare('SELECT id, sha256, storedBytes, expiresAt FROM cleanup_pending ORDER BY expiresAt, id LIMIT 128')
+            .all() as Array<Pick<ReceiptRow, 'id' | 'sha256' | 'storedBytes' | 'expiresAt'>>;
+          for (const row of pending) {
+            if (!receiptId.test(row.id) || !/^[a-f0-9]{64}$/.test(row.sha256))
+              throw new Error('Evidence cleanup metadata corrupt');
+            const active = db.prepare('SELECT id FROM receipts WHERE id = ?').get(row.id);
+            if (!active) {
+              for (const extension of ['json', 'tmp'] as const) {
+                const path = join(this.storageDir!, `${row.id}.${extension}`);
+                try {
+                  if (existsSync(path)) {
+                    let replacement = false;
+                    try {
+                      const disk = this.readDiskEntry(row.id, undefined, extension);
+                      replacement = disk.receipt.sha256 !== row.sha256 || disk.receipt.expiresAt !== row.expiresAt;
+                    } catch {
+                      /* An invalid unindexed file cannot become trusted evidence. */
+                    }
+                    if (!replacement) this.removeFile(path);
+                  }
+                } catch (error) {
+                  if ((error as NodeJS.ErrnoException).code !== 'ENOENT')
+                    throw new Error('Evidence bounded storage cleanup failed', { cause: error });
+                }
+              }
+            }
+            db.prepare('DELETE FROM cleanup_pending WHERE id = ?').run(row.id);
+            this.entries.delete(row.id);
+          }
+          return Boolean(db.prepare('SELECT id FROM cleanup_pending LIMIT 1').get());
+        })
+        .immediate(),
+    );
     if (morePending) throw new Error('Evidence bounded storage cleanup requires another sweep');
   }
 
   private reserveDiskReceipt(receipt: EvidenceReceipt): void {
-    const removed = this.withProvenanceDb(db => db.transaction(() => {
-      this.assertUniqueDiskGeneration(db);
-      if (db.prepare(`SELECT id FROM (
+    const removed = this.withProvenanceDb((db) =>
+      db
+        .transaction(() => {
+          this.assertUniqueDiskGeneration(db);
+          if (
+            db
+              .prepare(
+                `SELECT id FROM (
         SELECT id FROM receipts UNION ALL SELECT id FROM inflight UNION ALL SELECT id FROM cleanup_pending
-      ) WHERE id = ? LIMIT 1`).get(receipt.id)) throw new Error('Evidence receipt ID collision');
-      if (db.prepare('SELECT id FROM cleanup_pending LIMIT 1').get())
-        throw new Error('Evidence bounded storage cleanup is pending');
-      if (receipt.source.kind === 'research') {
-        const prior = db.prepare('SELECT key, id, sha256, expiresAt FROM provenance WHERE key = ?')
-          .get(researchKey(receipt.source)) as ProvenanceRow | undefined;
-        if (prior) { this.validateProvenance(prior); if (this.liveProvenance(prior)) throw new Error('Duplicate research provenance'); }
-      }
-      const inflight = db.prepare('SELECT count(*) AS count, COALESCE(sum(storedBytes), 0) AS bytes FROM inflight')
-        .get() as { count: number; bytes: number };
-      if (inflight.count + 1 > this.maxEntries || inflight.bytes + receipt.storedBytes > this.maxTotalBytes)
-        throw new Error('Evidence bounded storage admission is full');
-      const active = db.prepare('SELECT sequence, id, sha256, storedBytes, expiresAt FROM receipts ORDER BY sequence, id')
-        .all() as ReceiptRow[];
-      let count = active.length + inflight.count + 1;
-      let bytes = active.reduce((sum, row) => sum + row.storedBytes, 0) + inflight.bytes + receipt.storedBytes;
-      const evicted: string[] = [];
-      for (const row of active) {
-        if (row.expiresAt > this.clock() && count <= this.maxEntries && bytes <= this.maxTotalBytes) break;
-        this.validateReceiptRow(row);
-        this.removeReceiptRows(db, [row.id]);
-        evicted.push(row.id);
-        count--; bytes -= row.storedBytes;
-      }
-      return evicted;
-    }).immediate());
+      ) WHERE id = ? LIMIT 1`,
+              )
+              .get(receipt.id)
+          )
+            throw new Error('Evidence receipt ID collision');
+          if (db.prepare('SELECT id FROM cleanup_pending LIMIT 1').get())
+            throw new Error('Evidence bounded storage cleanup is pending');
+          if (receipt.source.kind === 'research') {
+            const prior = db
+              .prepare('SELECT key, id, sha256, expiresAt FROM provenance WHERE key = ?')
+              .get(researchKey(receipt.source)) as ProvenanceRow | undefined;
+            if (prior) {
+              this.validateProvenance(prior);
+              if (this.liveProvenance(prior)) throw new Error('Duplicate research provenance');
+            }
+          }
+          const inflight = db
+            .prepare('SELECT count(*) AS count, COALESCE(sum(storedBytes), 0) AS bytes FROM inflight')
+            .get() as { count: number; bytes: number };
+          if (inflight.count + 1 > this.maxEntries || inflight.bytes + receipt.storedBytes > this.maxTotalBytes)
+            throw new Error('Evidence bounded storage admission is full');
+          const active = db
+            .prepare('SELECT sequence, id, sha256, storedBytes, expiresAt FROM receipts ORDER BY sequence, id')
+            .all() as ReceiptRow[];
+          let count = active.length + inflight.count + 1;
+          let bytes = active.reduce((sum, row) => sum + row.storedBytes, 0) + inflight.bytes + receipt.storedBytes;
+          const evicted: string[] = [];
+          for (const row of active) {
+            if (row.expiresAt > this.clock() && count <= this.maxEntries && bytes <= this.maxTotalBytes) break;
+            this.validateReceiptRow(row);
+            this.removeReceiptRows(db, [row.id]);
+            evicted.push(row.id);
+            count--;
+            bytes -= row.storedBytes;
+          }
+          return evicted;
+        })
+        .immediate(),
+    );
     this.removeReceiptFiles(removed);
-    this.withProvenanceDb(db => db.transaction(() => {
-      this.assertUniqueDiskGeneration(db);
-      if (db.prepare(`SELECT id FROM (
+    this.withProvenanceDb((db) =>
+      db
+        .transaction(() => {
+          this.assertUniqueDiskGeneration(db);
+          if (
+            db
+              .prepare(
+                `SELECT id FROM (
         SELECT id FROM receipts UNION ALL SELECT id FROM inflight UNION ALL SELECT id FROM cleanup_pending
-      ) WHERE id = ? LIMIT 1`).get(receipt.id)) throw new Error('Evidence receipt ID collision');
-      if (db.prepare('SELECT id FROM cleanup_pending LIMIT 1').get())
-        throw new Error('Evidence bounded storage cleanup is pending');
-      const totals = db.prepare(`SELECT
+      ) WHERE id = ? LIMIT 1`,
+              )
+              .get(receipt.id)
+          )
+            throw new Error('Evidence receipt ID collision');
+          if (db.prepare('SELECT id FROM cleanup_pending LIMIT 1').get())
+            throw new Error('Evidence bounded storage cleanup is pending');
+          const totals = db
+            .prepare(
+              `SELECT
         (SELECT count(*) FROM receipts) + (SELECT count(*) FROM inflight) AS count,
         (SELECT COALESCE(sum(storedBytes), 0) FROM receipts) +
-        (SELECT COALESCE(sum(storedBytes), 0) FROM inflight) AS bytes`).get() as { count: number; bytes: number };
-      if (totals.count + 1 > this.maxEntries || totals.bytes + receipt.storedBytes > this.maxTotalBytes)
-        throw new Error('Evidence bounded storage admission is full');
-      if (receipt.source.kind === 'research') {
-        const prior = db.prepare('SELECT key, id, sha256, expiresAt FROM provenance WHERE key = ?')
-          .get(researchKey(receipt.source)) as ProvenanceRow | undefined;
-        if (prior) { this.validateProvenance(prior); if (this.liveProvenance(prior)) throw new Error('Duplicate research provenance'); }
-      }
-      db.prepare('INSERT INTO inflight (id, sha256, storedBytes, expiresAt) VALUES (?, ?, ?, ?)')
-        .run(receipt.id, receipt.sha256, receipt.storedBytes, receipt.expiresAt);
-    }).immediate());
+        (SELECT COALESCE(sum(storedBytes), 0) FROM inflight) AS bytes`,
+            )
+            .get() as { count: number; bytes: number };
+          if (totals.count + 1 > this.maxEntries || totals.bytes + receipt.storedBytes > this.maxTotalBytes)
+            throw new Error('Evidence bounded storage admission is full');
+          if (receipt.source.kind === 'research') {
+            const prior = db
+              .prepare('SELECT key, id, sha256, expiresAt FROM provenance WHERE key = ?')
+              .get(researchKey(receipt.source)) as ProvenanceRow | undefined;
+            if (prior) {
+              this.validateProvenance(prior);
+              if (this.liveProvenance(prior)) throw new Error('Duplicate research provenance');
+            }
+          }
+          db.prepare('INSERT INTO inflight (id, sha256, storedBytes, expiresAt) VALUES (?, ?, ?, ?)').run(
+            receipt.id,
+            receipt.sha256,
+            receipt.storedBytes,
+            receipt.expiresAt,
+          );
+        })
+        .immediate(),
+    );
   }
 
   private pruneDiskRows(db: Database.Database): string[] {
     const removed: string[] = [];
-    const expired = db.prepare('SELECT sequence, id, sha256, storedBytes, expiresAt FROM receipts WHERE expiresAt <= ?')
+    const expired = db
+      .prepare('SELECT sequence, id, sha256, storedBytes, expiresAt FROM receipts WHERE expiresAt <= ?')
       .all(this.clock()) as ReceiptRow[];
     for (const row of expired) this.validateReceiptRow(row);
-    removed.push(...expired.map(row => row.id));
+    removed.push(...expired.map((row) => row.id));
     this.removeReceiptRows(db, removed);
     db.prepare('DELETE FROM provenance WHERE expiresAt <= ?').run(this.clock());
     while (true) {
-      const totals = db.prepare('SELECT count(*) AS count, COALESCE(sum(storedBytes), 0) AS bytes FROM receipts')
+      const totals = db
+        .prepare('SELECT count(*) AS count, COALESCE(sum(storedBytes), 0) AS bytes FROM receipts')
         .get() as { count: number; bytes: number };
       if (totals.count <= this.maxEntries && totals.bytes <= this.maxTotalBytes) break;
-      const oldest = db.prepare('SELECT sequence, id, sha256, storedBytes, expiresAt FROM receipts ORDER BY sequence, id LIMIT 1')
+      const oldest = db
+        .prepare('SELECT sequence, id, sha256, storedBytes, expiresAt FROM receipts ORDER BY sequence, id LIMIT 1')
         .get() as ReceiptRow;
       this.validateReceiptRow(oldest);
       this.removeReceiptRows(db, [oldest.id]);
@@ -442,124 +717,198 @@ export class EvidenceStore {
       if (!receiptId.test(id)) throw new Error('Invalid evidence cleanup path');
       const known = this.entries.get(id);
       this.entries.delete(id);
-      this.withProvenanceDb(db => db.transaction(() => {
-        if (db.prepare('SELECT id FROM receipts WHERE id = ?').get(id)) return;
-        const pending = db.prepare('SELECT id FROM cleanup_pending WHERE id = ?').get(id);
-        if (pending) return;
-        const path = join(this.storageDir!, id + '.json');
-        if (existsSync(path)) {
-          try {
-            const disk = this.readDiskEntry(id);
-            if (!known || disk.receipt.sha256 !== known.receipt.sha256
-              || disk.receipt.expiresAt !== known.receipt.expiresAt) return;
-          } catch { /* Invalid unindexed files are safe to discard. */ }
-        }
-        try { this.removeFile(path); }
-        catch (error) { throw new Error('Evidence bounded storage cleanup failed', { cause: error }); }
-      }).immediate());
+      this.withProvenanceDb((db) =>
+        db
+          .transaction(() => {
+            if (db.prepare('SELECT id FROM receipts WHERE id = ?').get(id)) return;
+            const pending = db.prepare('SELECT id FROM cleanup_pending WHERE id = ?').get(id);
+            if (pending) return;
+            const path = join(this.storageDir!, id + '.json');
+            if (existsSync(path)) {
+              try {
+                const disk = this.readDiskEntry(id);
+                if (
+                  !known ||
+                  disk.receipt.sha256 !== known.receipt.sha256 ||
+                  disk.receipt.expiresAt !== known.receipt.expiresAt
+                )
+                  return;
+              } catch {
+                /* Invalid unindexed files are safe to discard. */
+              }
+            }
+            try {
+              this.removeFile(path);
+            } catch (error) {
+              throw new Error('Evidence bounded storage cleanup failed', { cause: error });
+            }
+          })
+          .immediate(),
+      );
     }
     this.cleanupPending();
   }
 
   private initializeDisk(): void {
-    const removed = this.withProvenanceDb(db => db.transaction(() => {
-      this.assertUniqueDiskGeneration(db);
-      const cleanup: string[] = [];
-      if (!db.prepare("SELECT name FROM cache_state WHERE name = 'receipts-initialized'").get()) {
-        const candidates: Entry[] = [];
-        for (const file of readdirSync(this.storageDir!).filter(name => receiptFileName.test(name))) {
-          const id = file.slice(0, -5);
-          if (!receiptId.test(id)) continue;
-          try {
-            const entry = this.readDiskEntry(id);
-            if (entry.receipt.expiresAt <= this.clock()) cleanup.push(id);
-            else candidates.push(entry);
-          } catch { cleanup.push(id); }
-        }
-        candidates.sort((a, b) => a.order - b.order || a.receipt.id.localeCompare(b.receipt.id));
-        for (const entry of candidates) db.prepare('INSERT INTO receipts (id, sha256, storedBytes, expiresAt) VALUES (?, ?, ?, ?)')
-          .run(entry.receipt.id, entry.receipt.sha256, entry.receipt.storedBytes, entry.receipt.expiresAt);
-        db.prepare("INSERT INTO cache_state (name) VALUES ('receipts-initialized')").run();
-      }
-      const rows = db.prepare('SELECT sequence, id, sha256, storedBytes, expiresAt FROM receipts ORDER BY sequence, id')
-        .all() as ReceiptRow[];
-      for (const row of rows) {
-        this.validateReceiptRow(row);
-        if (row.expiresAt <= this.clock()) continue;
-        try { this.entries.set(row.id, this.readDiskEntry(row.id, row)); }
-        catch { this.removeReceiptRows(db, [row.id]); cleanup.push(row.id); }
-      }
-      cleanup.push(...this.pruneDiskRows(db));
-      return cleanup;
-    }).immediate());
+    const removed = this.withProvenanceDb((db) =>
+      db
+        .transaction(() => {
+          this.assertUniqueDiskGeneration(db);
+          const cleanup: string[] = [];
+          if (!db.prepare("SELECT name FROM cache_state WHERE name = 'receipts-initialized'").get()) {
+            const candidates: Entry[] = [];
+            for (const file of readdirSync(this.storageDir!).filter((name) => receiptFileName.test(name))) {
+              const id = file.slice(0, -5);
+              if (!receiptId.test(id)) continue;
+              try {
+                const entry = this.readDiskEntry(id);
+                if (entry.receipt.expiresAt <= this.clock()) cleanup.push(id);
+                else candidates.push(entry);
+              } catch {
+                cleanup.push(id);
+              }
+            }
+            candidates.sort((a, b) => a.order - b.order || a.receipt.id.localeCompare(b.receipt.id));
+            for (const entry of candidates)
+              db.prepare('INSERT INTO receipts (id, sha256, storedBytes, expiresAt) VALUES (?, ?, ?, ?)').run(
+                entry.receipt.id,
+                entry.receipt.sha256,
+                entry.receipt.storedBytes,
+                entry.receipt.expiresAt,
+              );
+            db.prepare("INSERT INTO cache_state (name) VALUES ('receipts-initialized')").run();
+          }
+          const rows = db
+            .prepare('SELECT sequence, id, sha256, storedBytes, expiresAt FROM receipts ORDER BY sequence, id')
+            .all() as ReceiptRow[];
+          for (const row of rows) {
+            this.validateReceiptRow(row);
+            if (row.expiresAt <= this.clock()) continue;
+            try {
+              this.entries.set(row.id, this.readDiskEntry(row.id, row));
+            } catch {
+              this.removeReceiptRows(db, [row.id]);
+              cleanup.push(row.id);
+            }
+          }
+          cleanup.push(...this.pruneDiskRows(db));
+          return cleanup;
+        })
+        .immediate(),
+    );
     this.removeReceiptFiles(removed);
     // Receipt files from a crash before the database commit have no live row.
-    this.withProvenanceDb(db => db.transaction(() => {
-      for (const file of readdirSync(this.storageDir!).filter(name => receiptFileName.test(name))) {
-        const id = file.slice(0, -5);
-        if (!receiptId.test(id) || db.prepare('SELECT id FROM receipts WHERE id = ?').get(id)) continue;
-        let expired = false;
-        try { expired = this.readDiskEntry(id).receipt.expiresAt <= this.clock(); }
-        catch { expired = true; }
-        if (expired) rmSync(join(this.storageDir!, file), { force: true });
-      }
-    }).immediate());
+    this.withProvenanceDb((db) =>
+      db
+        .transaction(() => {
+          for (const file of readdirSync(this.storageDir!).filter((name) => receiptFileName.test(name))) {
+            const id = file.slice(0, -5);
+            if (!receiptId.test(id) || db.prepare('SELECT id FROM receipts WHERE id = ?').get(id)) continue;
+            let expired = false;
+            try {
+              expired = this.readDiskEntry(id).receipt.expiresAt <= this.clock();
+            } catch {
+              expired = true;
+            }
+            if (expired) rmSync(join(this.storageDir!, file), { force: true });
+          }
+        })
+        .immediate(),
+    );
   }
 
   private commitDiskReceipt(receipt: EvidenceReceipt): void {
-    const removed = this.withProvenanceDb(db => db.transaction(() => {
-      this.assertUniqueDiskGeneration(db);
-      const reservation = db.prepare('SELECT id, sha256, storedBytes, expiresAt FROM inflight WHERE id = ?')
-        .get(receipt.id) as Pick<ReceiptRow, 'id' | 'sha256' | 'storedBytes' | 'expiresAt'> | undefined;
-      if (!reservation || reservation.sha256 !== receipt.sha256 || reservation.storedBytes !== receipt.storedBytes
-        || reservation.expiresAt !== receipt.expiresAt || db.prepare('SELECT id FROM cleanup_pending LIMIT 1').get())
-        throw new Error('Evidence bounded storage admission expired or cleanup is pending');
-      const cleanup = this.pruneDiskRows(db);
-      if (receipt.expiresAt <= this.clock() || !existsSync(join(this.storageDir!, receipt.id + '.json')))
-        throw new Error('Evidence receipt expired or evicted before claim');
-      if (receipt.source.kind === 'research') {
-        const key = researchKey(receipt.source);
-        const prior = db.prepare('SELECT key, id, sha256, expiresAt FROM provenance WHERE key = ?').get(key) as ProvenanceRow | undefined;
-        if (prior) {
-          this.validateProvenance(prior);
-          const previous = db.prepare('SELECT sequence, id, sha256, storedBytes, expiresAt FROM receipts WHERE id = ?')
-            .get(prior.id) as ReceiptRow | undefined;
-          if (previous) {
-            this.validateReceiptRow(previous);
-            if (previous.sha256 !== prior.sha256 || previous.expiresAt !== prior.expiresAt)
-              throw new Error('Research provenance marker corrupt');
-            if (this.liveProvenance(prior)) throw new Error('Duplicate research provenance');
-            this.removeReceiptRows(db, [prior.id]);
-            cleanup.push(prior.id);
+    const removed = this.withProvenanceDb((db) =>
+      db
+        .transaction(() => {
+          this.assertUniqueDiskGeneration(db);
+          const reservation = db
+            .prepare('SELECT id, sha256, storedBytes, expiresAt FROM inflight WHERE id = ?')
+            .get(receipt.id) as Pick<ReceiptRow, 'id' | 'sha256' | 'storedBytes' | 'expiresAt'> | undefined;
+          if (
+            !reservation ||
+            reservation.sha256 !== receipt.sha256 ||
+            reservation.storedBytes !== receipt.storedBytes ||
+            reservation.expiresAt !== receipt.expiresAt ||
+            db.prepare('SELECT id FROM cleanup_pending LIMIT 1').get()
+          )
+            throw new Error('Evidence bounded storage admission expired or cleanup is pending');
+          const cleanup = this.pruneDiskRows(db);
+          if (receipt.expiresAt <= this.clock() || !existsSync(join(this.storageDir!, receipt.id + '.json')))
+            throw new Error('Evidence receipt expired or evicted before claim');
+          if (receipt.source.kind === 'research') {
+            const key = researchKey(receipt.source);
+            const prior = db.prepare('SELECT key, id, sha256, expiresAt FROM provenance WHERE key = ?').get(key) as
+              ProvenanceRow | undefined;
+            if (prior) {
+              this.validateProvenance(prior);
+              const previous = db
+                .prepare('SELECT sequence, id, sha256, storedBytes, expiresAt FROM receipts WHERE id = ?')
+                .get(prior.id) as ReceiptRow | undefined;
+              if (previous) {
+                this.validateReceiptRow(previous);
+                if (previous.sha256 !== prior.sha256 || previous.expiresAt !== prior.expiresAt)
+                  throw new Error('Research provenance marker corrupt');
+                if (this.liveProvenance(prior)) throw new Error('Duplicate research provenance');
+                this.removeReceiptRows(db, [prior.id]);
+                cleanup.push(prior.id);
+              }
+              db.prepare('DELETE FROM provenance WHERE key = ? AND id = ?').run(key, prior.id);
+            }
           }
-          db.prepare('DELETE FROM provenance WHERE key = ? AND id = ?').run(key, prior.id);
-        }
-      }
-      db.prepare('INSERT INTO receipts (id, sha256, storedBytes, expiresAt) VALUES (?, ?, ?, ?)')
-        .run(receipt.id, receipt.sha256, receipt.storedBytes, receipt.expiresAt);
-      if (receipt.source.kind === 'research') db.prepare('INSERT INTO provenance (key, id, sha256, expiresAt) VALUES (?, ?, ?, ?)')
-        .run(researchKey(receipt.source), receipt.id, receipt.sha256, receipt.expiresAt);
-      db.prepare('DELETE FROM inflight WHERE id = ?').run(receipt.id);
-      cleanup.push(...this.pruneDiskRows(db));
-      return cleanup;
-    }).immediate());
+          db.prepare('INSERT INTO receipts (id, sha256, storedBytes, expiresAt) VALUES (?, ?, ?, ?)').run(
+            receipt.id,
+            receipt.sha256,
+            receipt.storedBytes,
+            receipt.expiresAt,
+          );
+          if (receipt.source.kind === 'research')
+            db.prepare('INSERT INTO provenance (key, id, sha256, expiresAt) VALUES (?, ?, ?, ?)').run(
+              researchKey(receipt.source),
+              receipt.id,
+              receipt.sha256,
+              receipt.expiresAt,
+            );
+          db.prepare('DELETE FROM inflight WHERE id = ?').run(receipt.id);
+          cleanup.push(...this.pruneDiskRows(db));
+          return cleanup;
+        })
+        .immediate(),
+    );
     this.removeReceiptFiles(removed);
   }
 
   private assertResearchClaimCurrent(source: ResearchSource, receipt: EvidenceReceipt): void {
     const key = researchKey(source);
-    this.withProvenanceDb(db => db.transaction(() => {
-      const row = db.prepare('SELECT key, id, sha256, expiresAt FROM provenance WHERE key = ?').get(key) as ProvenanceRow | undefined;
-      const indexed = db.prepare('SELECT id FROM receipts WHERE id = ? AND sha256 = ? AND expiresAt = ?').get(receipt.id, receipt.sha256, receipt.expiresAt);
-      if (!row || row.id !== receipt.id || row.sha256 !== receipt.sha256
-        || row.expiresAt !== receipt.expiresAt || !indexed || !this.liveProvenance(row))
-        throw new Error('Research receipt expired or replaced before return');
-    }).immediate());
+    this.withProvenanceDb((db) =>
+      db
+        .transaction(() => {
+          const row = db.prepare('SELECT key, id, sha256, expiresAt FROM provenance WHERE key = ?').get(key) as
+            ProvenanceRow | undefined;
+          const indexed = db
+            .prepare('SELECT id FROM receipts WHERE id = ? AND sha256 = ? AND expiresAt = ?')
+            .get(receipt.id, receipt.sha256, receipt.expiresAt);
+          if (
+            !row ||
+            row.id !== receipt.id ||
+            row.sha256 !== receipt.sha256 ||
+            row.expiresAt !== receipt.expiresAt ||
+            !indexed ||
+            !this.liveProvenance(row)
+          )
+            throw new Error('Research receipt expired or replaced before return');
+        })
+        .immediate(),
+    );
   }
 
   private validateProvenance(row: ProvenanceRow): void {
-    if (!/^[a-f0-9]{64}$/.test(row.key) || !receiptId.test(row.id)
-      || !/^[a-f0-9]{64}$/.test(row.sha256) || !Number.isSafeInteger(row.expiresAt))
+    if (
+      !/^[a-f0-9]{64}$/.test(row.key) ||
+      !receiptId.test(row.id) ||
+      !/^[a-f0-9]{64}$/.test(row.sha256) ||
+      !Number.isSafeInteger(row.expiresAt)
+    )
       throw new Error('Research provenance marker corrupt');
   }
 
@@ -567,19 +916,27 @@ export class EvidenceStore {
     if (row.expiresAt <= this.clock()) return false;
     const file = join(this.storageDir!, row.id + '.json');
     let info;
-    try { info = lstatSync(file); }
-    catch (error) {
+    try {
+      info = lstatSync(file);
+    } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
       throw error;
     }
     if (!info.isFile() || info.isSymbolicLink() || info.size > MAX_DISK_FILE)
       throw new Error('Research provenance marker corrupt');
     let disk: unknown;
-    try { disk = JSON.parse(readFileSync(file, 'utf8')); }
-    catch { throw new Error('Research provenance marker corrupt'); }
-    if (!validDiskEntry(disk, row.id) || disk.receipt.source.kind !== 'research'
-      || researchKey(disk.receipt.source) !== row.key || disk.receipt.sha256 !== row.sha256
-      || disk.receipt.expiresAt !== row.expiresAt)
+    try {
+      disk = JSON.parse(readFileSync(file, 'utf8'));
+    } catch {
+      throw new Error('Research provenance marker corrupt');
+    }
+    if (
+      !validDiskEntry(disk, row.id) ||
+      disk.receipt.source.kind !== 'research' ||
+      researchKey(disk.receipt.source) !== row.key ||
+      disk.receipt.sha256 !== row.sha256 ||
+      disk.receipt.expiresAt !== row.expiresAt
+    )
       throw new Error('Research provenance marker corrupt');
     const bytes = Buffer.from(disk.bytes, 'base64');
     if (bytes.length !== disk.receipt.storedBytes || hash(bytes) !== row.sha256)
@@ -588,72 +945,114 @@ export class EvidenceStore {
   }
 
   private migrateLegacyProvenance(): void {
-    for (const file of readdirSync(this.storageDir!).filter(name => provenanceFileName.test(name))) {
+    for (const file of readdirSync(this.storageDir!).filter((name) => provenanceFileName.test(name))) {
       const marker = join(this.storageDir!, file);
       const info = lstatSync(marker);
       if (!info.isFile() || info.isSymbolicLink() || info.size > 512)
         throw new Error('Research provenance marker corrupt');
       let legacy: unknown;
-      try { legacy = JSON.parse(readFileSync(marker, 'utf8')); }
-      catch { throw new Error('Research provenance marker corrupt'); }
+      try {
+        legacy = JSON.parse(readFileSync(marker, 'utf8'));
+      } catch {
+        throw new Error('Research provenance marker corrupt');
+      }
       if (!legacy || typeof legacy !== 'object') throw new Error('Research provenance marker corrupt');
       const value = legacy as Record<string, unknown>;
       const row = { key: value.key, id: value.id, sha256: value.sha256, expiresAt: value.expiresAt } as ProvenanceRow;
       this.validateProvenance(row);
       if (value.version !== 1 || file !== `.research-provenance-${row.key}.json`)
         throw new Error('Research provenance marker corrupt');
-      if (row.expiresAt <= this.clock() || !this.entries.has(row.id)) { rmSync(marker, { force: true }); continue; }
+      if (row.expiresAt <= this.clock() || !this.entries.has(row.id)) {
+        rmSync(marker, { force: true });
+        continue;
+      }
       const receipt = this.entries.get(row.id)!.receipt;
-      if (receipt.sha256 !== row.sha256 || receipt.expiresAt !== row.expiresAt
-        || receipt.source.kind !== 'research' || researchKey(receipt.source) !== row.key)
+      if (
+        receipt.sha256 !== row.sha256 ||
+        receipt.expiresAt !== row.expiresAt ||
+        receipt.source.kind !== 'research' ||
+        researchKey(receipt.source) !== row.key
+      )
         throw new Error('Research provenance marker corrupt');
-      this.withProvenanceDb(db => db.transaction(() => {
-        const prior = db.prepare('SELECT key, id, sha256, expiresAt FROM provenance WHERE key = ?').get(row.key) as ProvenanceRow | undefined;
-        if (prior) {
-          this.validateProvenance(prior);
-          if (prior.id !== row.id && this.liveProvenance(prior))
-            throw new Error('Duplicate research provenance');
-        }
-        db.prepare('INSERT OR REPLACE INTO provenance (key, id, sha256, expiresAt) VALUES (?, ?, ?, ?)')
-          .run(row.key, row.id, row.sha256, row.expiresAt);
-      }).immediate());
+      this.withProvenanceDb((db) =>
+        db
+          .transaction(() => {
+            const prior = db.prepare('SELECT key, id, sha256, expiresAt FROM provenance WHERE key = ?').get(row.key) as
+              ProvenanceRow | undefined;
+            if (prior) {
+              this.validateProvenance(prior);
+              if (prior.id !== row.id && this.liveProvenance(prior)) throw new Error('Duplicate research provenance');
+            }
+            db.prepare('INSERT OR REPLACE INTO provenance (key, id, sha256, expiresAt) VALUES (?, ?, ?, ?)').run(
+              row.key,
+              row.id,
+              row.sha256,
+              row.expiresAt,
+            );
+          })
+          .immediate(),
+      );
       rmSync(marker, { force: true });
     }
   }
 
   private reconcileProvenance(): void {
-    this.withProvenanceDb(db => db.transaction(() => {
-      const rows = db.prepare('SELECT key, id, sha256, expiresAt FROM provenance').all() as ProvenanceRow[];
-      for (const row of rows) {
-        this.validateProvenance(row);
-        const indexed = db.prepare('SELECT id FROM receipts WHERE id = ? AND sha256 = ? AND expiresAt = ?')
-          .get(row.id, row.sha256, row.expiresAt);
-        if (!indexed || !this.liveProvenance(row))
-          db.prepare('DELETE FROM provenance WHERE key = ? AND id = ?').run(row.key, row.id);
-      }
-    }).immediate());
+    this.withProvenanceDb((db) =>
+      db
+        .transaction(() => {
+          const rows = db.prepare('SELECT key, id, sha256, expiresAt FROM provenance').all() as ProvenanceRow[];
+          for (const row of rows) {
+            this.validateProvenance(row);
+            const indexed = db
+              .prepare('SELECT id FROM receipts WHERE id = ? AND sha256 = ? AND expiresAt = ?')
+              .get(row.id, row.sha256, row.expiresAt);
+            if (!indexed || !this.liveProvenance(row))
+              db.prepare('DELETE FROM provenance WHERE key = ? AND id = ?').run(row.key, row.id);
+          }
+        })
+        .immediate(),
+    );
   }
 
-  async expand(input: { id: string; startByte?: number; maxBytes?: number; expectedSha256?: string }): Promise<EvidencePage> {
+  async expand(input: {
+    id: string;
+    startByte?: number;
+    maxBytes?: number;
+    expectedSha256?: string;
+  }): Promise<EvidencePage> {
     if (this.storageDir) this.cleanupPending();
     let entry = this.entries.get(input.id);
     if (this.storageDir) {
-      const row = this.withProvenanceDb(db => db.prepare('SELECT sequence, id, sha256, storedBytes, expiresAt FROM receipts WHERE id = ?')
-        .get(input.id) as ReceiptRow | undefined);
+      const row = this.withProvenanceDb(
+        (db) =>
+          db.prepare('SELECT sequence, id, sha256, storedBytes, expiresAt FROM receipts WHERE id = ?').get(input.id) as
+            ReceiptRow | undefined,
+      );
       if (!row) {
         if (entry && receiptId.test(input.id)) this.removeReceiptFiles([input.id]);
         else this.entries.delete(input.id);
         return { status: entry && entry.receipt.expiresAt <= this.clock() ? 'expired' : 'missing', id: input.id };
       }
       this.validateReceiptRow(row);
-      if (row.expiresAt <= this.clock()) { this.delete(input.id); return { status: 'expired', id: input.id }; }
+      if (row.expiresAt <= this.clock()) {
+        this.delete(input.id);
+        return { status: 'expired', id: input.id };
+      }
       if (!entry || entry.receipt.sha256 !== row.sha256 || entry.receipt.expiresAt !== row.expiresAt) {
-        try { entry = this.readDiskEntry(input.id, row); this.entries.set(input.id, entry); }
-        catch { this.delete(input.id); return { status: 'missing', id: input.id }; }
+        try {
+          entry = this.readDiskEntry(input.id, row);
+          this.entries.set(input.id, entry);
+        } catch {
+          this.delete(input.id);
+          return { status: 'missing', id: input.id };
+        }
       }
     }
     if (!entry) return { status: 'missing', id: input.id };
-    if (entry.receipt.expiresAt <= this.clock()) { this.delete(input.id); return { status: 'expired', id: input.id }; }
+    if (entry.receipt.expiresAt <= this.clock()) {
+      this.delete(input.id);
+      return { status: 'expired', id: input.id };
+    }
     if (this.storageDir && !existsSync(join(this.storageDir, input.id + '.json'))) {
       this.delete(input.id);
       return { status: 'missing', id: input.id };
@@ -662,8 +1061,15 @@ export class EvidenceStore {
       return { status: 'hash_mismatch', id: input.id };
     const startByte = input.startByte ?? 0;
     const maxBytes = input.maxBytes ?? DEFAULT_PAGE;
-    if (!Number.isSafeInteger(startByte) || startByte < 0 || startByte > entry.bytes.length ||
-      !Number.isSafeInteger(maxBytes) || maxBytes < 1 || maxBytes > MAX_PAGE) throw new RangeError('Invalid evidence byte range');
+    if (
+      !Number.isSafeInteger(startByte) ||
+      startByte < 0 ||
+      startByte > entry.bytes.length ||
+      !Number.isSafeInteger(maxBytes) ||
+      maxBytes < 1 ||
+      maxBytes > MAX_PAGE
+    )
+      throw new RangeError('Invalid evidence byte range');
     const end = Math.min(entry.bytes.length, startByte + maxBytes);
     let status: 'ok' | 'stale' = 'ok';
     if (entry.receipt.source.kind === 'workspace') {
@@ -671,17 +1077,28 @@ export class EvidenceStore {
       const { safeWorkspaceBytes } = await import('./workspace.js');
       try {
         const actual = canonicalWorkspace(entry.receipt.source.root, entry.receipt.source.path);
-        if (actual !== entry.canonicalPath || hash(await safeWorkspaceBytes(entry.receipt.source.root, actual)) !== entry.sourceHash) status = 'stale';
-      } catch { status = 'stale'; }
+        if (
+          actual !== entry.canonicalPath ||
+          hash(await safeWorkspaceBytes(entry.receipt.source.root, actual)) !== entry.sourceHash
+        )
+          status = 'stale';
+      } catch {
+        status = 'stale';
+      }
     }
-    return { status, receipt: structuredClone(entry.receipt), startByte, nextByte: end < entry.bytes.length ? end : null,
-      dataBase64: entry.bytes.subarray(startByte, end).toString('base64') };
+    return {
+      status,
+      receipt: structuredClone(entry.receipt),
+      startByte,
+      nextByte: end < entry.bytes.length ? end : null,
+      dataBase64: entry.bytes.subarray(startByte, end).toString('base64'),
+    };
   }
 
   private delete(id: string): void {
     if (this.storageDir) {
       if (!receiptId.test(id)) throw new Error('Invalid evidence receipt ID');
-      this.withProvenanceDb(db => db.transaction(() => this.removeReceiptRows(db, [id])).immediate());
+      this.withProvenanceDb((db) => db.transaction(() => this.removeReceiptRows(db, [id])).immediate());
       this.removeReceiptFiles([id]);
     }
     this.entries.delete(id);

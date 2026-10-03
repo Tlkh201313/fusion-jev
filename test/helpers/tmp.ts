@@ -25,7 +25,12 @@ export function withTempDir<T>(prefix: string, fn: (dir: string) => T | Promise<
   const dir = mkdtempSync(join(tmpdir(), prefix));
   const cleanup = () => rmSync(dir, { recursive: true, force: true });
   let result: T | Promise<T>;
-  try { result = fn(dir); } catch (error) { cleanup(); throw error; }
+  try {
+    result = fn(dir);
+  } catch (error) {
+    cleanup();
+    throw error;
+  }
   if (result instanceof Promise) return result.finally(cleanup);
   cleanup();
   return result;

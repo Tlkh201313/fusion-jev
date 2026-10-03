@@ -25,21 +25,31 @@ test('tsc with 60 errors shows as many diagnostics as fit a token budget, not a 
 test('the first diagnostic of every distinct TS code is kept and the shown list stays in source order', async () => {
   const store = new EvidenceStore();
   const noisy = Buffer.concat([
-    ...Array.from({ length: 80 }, (_, i) => Buffer.from(`src/a.ts(${i + 1},1): error TS2322: Type 'string' is not assignable to type 'number'.\n`)),
+    ...Array.from({ length: 80 }, (_, i) =>
+      Buffer.from(`src/a.ts(${i + 1},1): error TS2322: Type 'string' is not assignable to type 'number'.\n`),
+    ),
     Buffer.from("src/z.ts(1,1): error TS2304: Cannot find name 'last'.\n"),
   ]);
   const summary = await summarizeChannel(store, capture(store, noisy));
-  assert.ok(summary.diagnostics.some(item => item.message.startsWith("Cannot find name 'last'")), 'rare code survives the budget');
-  const starts = summary.diagnostics.map(item => item.startByte);
-  assert.deepEqual(starts, [...starts].sort((a, b) => a - b));
+  assert.ok(
+    summary.diagnostics.some((item) => item.message.startsWith("Cannot find name 'last'")),
+    'rare code survives the budget',
+  );
+  const starts = summary.diagnostics.map((item) => item.startByte);
+  assert.deepEqual(
+    starts,
+    [...starts].sort((a, b) => a - b),
+  );
   assert.equal(summary.diagnosticsOmitted, 81 - summary.diagnostics.length);
 });
 
 test('errors outrank warnings when the budget is tight', async () => {
   const store = new EvidenceStore();
-  const text = Array.from({ length: 100 }, (_, i) => `w.rs:${i + 1}:1: warning: unused variable number ${i}\n`).join('') + 'e.rs:1:1: error: the one real error\n';
+  const text =
+    Array.from({ length: 100 }, (_, i) => `w.rs:${i + 1}:1: warning: unused variable number ${i}\n`).join('') +
+    'e.rs:1:1: error: the one real error\n';
   const summary = await summarizeChannel(store, capture(store, Buffer.from(text)));
-  assert.ok(summary.diagnostics.some(item => item.severity === 'error'));
+  assert.ok(summary.diagnostics.some((item) => item.severity === 'error'));
 });
 
 test('short complete output is still verbatim with zero omissions', async () => {
