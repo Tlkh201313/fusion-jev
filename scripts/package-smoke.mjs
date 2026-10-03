@@ -40,7 +40,7 @@ try {
   const pluginRoot = join(consumer, 'node_modules', 'fusion-jev', 'plugin', 'fusion-jev');
   const manifest = JSON.parse(await readFile(join(pluginRoot, '.codex-plugin', 'plugin.json'), 'utf8'));
   assert.equal(manifest.skills, undefined, 'Routine MCP use must not load a bundled skill file');
-  assert.match(manifest.interface.defaultPrompt.join(' '), /Fusion.*inspection/i);
+  assert.match(manifest.interface.defaultPrompt.join(' '), /Fusion.*fusion_inspect/i);
   assert.match(manifest.interface.defaultPrompt.join(' '), /RTK/);
   assert.ok(!paths.some(path => path.startsWith('plugin/fusion-jev/skills/')));
   for (const field of ['composerIcon', 'logo', 'logoDark']) {
