@@ -17,7 +17,7 @@ flowchart LR
 
 ## Components
 
-- **MCP server (`fusion-jev stdio`).** Exposes `fusion_inspect`, `fusion_assist` and `fusion_evidence` by default. `FUSION_MCP_PROFILE=full` adds routing and per-operation inspection tools. All inspection tools are read-only and limited to approved workspace roots.
+- **MCP server (`fusion-jev stdio`).** Exposes `fusion_inspect`, `fusion_assist` and `fusion_evidence` by default. `FUSION_MCP_PROFILE=full` adds routing and per-operation inspection tools. Inspection uses bounded read-only actions. Local stdio accepts host-selected absolute roots by default; restricted mode enforces the configured allowlist. HTTP keeps its fixed server-side root.
 - **Command wrapper (`npx -y fusion-jev run -- program argv...`, or `fusion-jev run ...` after a global install).** The host chooses the command and its arguments, and its own permission system still applies. The wrapper runs the program, captures stdout and stderr separately, summarizes supported diagnostics, and exits with the child's status (124 on timeout, 130 on cancel, 127 if the program cannot be launched). Output that totals 1 KiB or less, is complete, unredacted and valid UTF-8 is printed verbatim followed by one `exitCode=… durationMs=…` status line, and no receipt is written. `--raw` prints output directly and creates no receipt.
 - **Receipt store.** A private directory in your user cache (`fusion-jev-mcp/evidence`) shared by the CLI and the MCP server when run as the same user.
 - **Jev (optional).** When `TYPESAFE_API_KEY` is set, the router can ask TypeSafe's Jev to pick one ID from a bounded list of validated candidates, or to escalate. Jev cannot produce commands, arguments or code, and a choice never grants permission to write.

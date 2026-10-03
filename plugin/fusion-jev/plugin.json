@@ -1,12 +1,22 @@
 {
   "name": "fusion-jev",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Recoverable compact coding evidence and bounded Jev choices",
-  "author": { "name": "Fusion contributors" },
+  "author": {
+    "name": "Fusion contributors"
+  },
   "mcpServers": "./.mcp.json",
-  "extensions": { "com.openai": { "interface": {
-    "displayName": "Fusion Jev",
-    "shortDescription": "Grounded evidence with recoverable compact output.",
-    "defaultPrompt": ["Use Fusion when output would be long or noisy or several files are involved: batch reads, outline/symbol/grep and Git evidence through fusion_inspect; give fusion_assist a short goal; expand receipts with fusion_evidence. Jev selects validated IDs only.", "Host owns reasoning, edits, permissions and correctness. Run tests, builds, lint, installs and log commands through fusion-jev run -- program argv... if installed globally, else npx -y fusion-jev@0.3.0 run -- program argv... (in PowerShell write '--'); use RTK/native tools when Fusion is unavailable or unsupported. Continue in the current host on escalation."]
-  } } }
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "Fusion Jev",
+        "shortDescription": "Grounded evidence with recoverable compact output.",
+        "defaultPrompt": [
+          "Use Fusion through fusion_assist first for every supported routine task, including known small reads, searches, Git checks and commands. Configured Jev selects validated actions before Fusion gathers evidence. Do not substitute fusion_inspect for normal delegation; it is an explicit diagnostic or escalation/failure fallback. fusion_evidence recovers exact receipts only when needed.",
+          "For exact commands, call fusion_assist with task, absolute root and command:{program,argv}; execute its returned execution plan through fusion-jev run -- program argv... if installed globally, else npx -y fusion-jev@0.3.1 run -- program argv... (PowerShell: quote '--'; --raw for short output). Existing authorization and host permissions apply; do not ask for extra Jev access approval. Continue bounded assistance when needed. Host owns reasoning, edits and verification. Native tools only on unsupported work or explicit failure."
+        ]
+      }
+    }
+  },
+  "skills": "./skills/"
 }

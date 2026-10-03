@@ -36,14 +36,14 @@ async function withDeadline<T>(pending: Promise<T>, timeoutMs: number, message: 
   }
 }
 
-async function waitForFile(path: string): Promise<void> {
+async function waitForFile(path: string, timeoutMs = 2000): Promise<void> {
   await waitFor(
     () =>
       readFile(path).then(
         () => true,
         () => false,
       ),
-    2000,
+    timeoutMs,
     20,
     `fixture to create ${path}`,
   );
@@ -379,7 +379,8 @@ test(
       await waitForFile(parentPidPath);
       descendantIdentity = recordWindowsProcess(Number(await readFile(pidPath, 'utf8')));
       const parentIdentity = recordWindowsProcess(Number(await readFile(parentPidPath, 'utf8')));
-      await waitForFile(parentExitPath);
+      // This marker is deliberately written after 2500ms; a 2000ms wait races on fast hosts.
+      await waitForFile(parentExitPath, 3500);
       assert.equal(await readFile(parentExitPath, 'utf8'), 'exited');
       while (
         windowsStartTicks(parentIdentity.pid) === parentIdentity.startTicks &&

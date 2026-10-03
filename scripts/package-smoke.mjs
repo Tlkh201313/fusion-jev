@@ -71,10 +71,11 @@ try {
   run([npmCli, 'install', '--prefix', consumer, '--omit=dev', '--no-audit', '--no-fund', join(root, packed.filename)]);
   const pluginRoot = join(consumer, 'node_modules', 'fusion-jev', 'plugin', 'fusion-jev');
   const manifest = JSON.parse(await readFile(join(pluginRoot, '.codex-plugin', 'plugin.json'), 'utf8'));
-  assert.equal(manifest.skills, undefined, 'Routine MCP use must not load a bundled skill file');
+  assert.equal(manifest.skills, './skills/');
   assert.match(manifest.interface.defaultPrompt.join(' '), /Fusion.*fusion_inspect/i);
-  assert.match(manifest.interface.defaultPrompt.join(' '), /RTK/);
-  assert.ok(!paths.some((path) => path.startsWith('plugin/fusion-jev/skills/')));
+  assert.match(manifest.interface.defaultPrompt.join(' '), /fusion_assist first/);
+  assert.match(manifest.interface.defaultPrompt.join(' '), /fusion_inspect.*fallback/);
+  assert.ok(paths.includes('plugin/fusion-jev/skills/assist/SKILL.md'));
   for (const field of ['composerIcon', 'logo', 'logoDark']) {
     const icon = await readFile(join(pluginRoot, manifest.interface[field]));
     assert.equal(icon.subarray(1, 4).toString(), 'PNG');
@@ -171,7 +172,7 @@ try {
     ]) {
       const client = new Client({name:'package-smoke', version:'1'});
       const transport = new StdioClientTransport({command:'fusion-jev', args:['stdio'], env:{...process.env,PATH:resolve('node_modules/.bin') + delimiter + process.env.PATH, TYPESAFE_API_KEY:'', JEV_API_KEY:'', OPENAI_API_KEY:'', FUSION_MCP_PROFILE:profile}});
-      try { await client.connect(transport); assert.deepEqual((await client.listTools()).tools.map(tool => tool.name), expected); }
+      try { await client.connect(transport); const tools=(await client.listTools()).tools; assert.deepEqual(tools.map(tool => tool.name), expected); if(profile==='assist') assert.ok(tools.find(tool=>tool.name==='fusion_assist').inputSchema.properties.command); }
       finally { await client.close(); }
     }
   `,

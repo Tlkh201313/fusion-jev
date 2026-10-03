@@ -58,7 +58,9 @@ function createToolContext(
     }
     let assistance = byRoot.get(service.root);
     if (!assistance) {
-      assistance = new AssistanceService(service, router, evidenceStore);
+      assistance = new AssistanceService(service, router, evidenceStore, undefined, {
+        delegateKnownActions: Boolean(config.jev.apiKey),
+      });
       byRoot.set(service.root, assistance);
     }
     return assistance;
@@ -154,12 +156,12 @@ export function createFusionMcpServer(options: McpOptions, requestSignal?: () =>
   const workspaceHint = workspace
     ? 'This server has a fixed workspace; omit root.'
     : workspaceFactory
-      ? 'Pass an approved absolute root (FUSION_WORKSPACE_ROOT/ALLOWED_ROOTS); path selects subdirectories.'
+      ? "Pass the active project's absolute root; local stdio accepts host-selected roots by default. Restricted mode uses configured roots. Use path for subdirectories."
       : '';
-  const serverInfo = { name: 'fusion-jev', title: 'Fusion Jev', version: '0.3.0' };
+  const serverInfo = { name: 'fusion-jev', title: 'Fusion Jev', version: '0.3.1' };
   const server = new McpServer(serverInfo, {
     instructions:
-      `Fusion inspection tools: assist (short repo tasks), inspect (batched read/outline/symbol/grep/git), evidence (expand receipts). Run noisy commands via fusion-jev run -- cmd args (else npx -y fusion-jev@${serverInfo.version} run -- ...; --raw for small exact output; quote '--' in PowerShell). Host owns reasoning, edits, approvals. RTK/native are fallback. ${hasWorkspace ? workspaceHint : 'No workspace is exposed.'}`.trim(),
+      `Use Fusion through fusion_assist first for routine reads/searches/Git/commands, even small known tasks. Configured Jev selects validated IDs before actions. command:{program,argv} plans exact commands. Run returned plans through fusion-jev run -- program argv... if installed globally, else npx -y fusion-jev@${serverInfo.version} run -- program argv... (--raw for short output; PowerShell: '--'). fusion_inspect is fallback inspection; fusion_evidence recovers receipts. No extra Jev approval. Host verifies. RTK/native on unsupported work/failure. ${hasWorkspace ? workspaceHint : 'No workspace is exposed.'}`.trim(),
   });
   const specs = createToolSpecs(config);
   registerTools(server, ctx, specs, hasWorkspace);

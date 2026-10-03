@@ -107,8 +107,8 @@ The default profile exposes three MCP tools:
 
 | Tool | Use it for |
 | --- | --- |
-| `fusion_inspect` | Known file reads, literal searches and Git inspections; batch up to eight independent actions. |
-| `fusion_assist` | A short grounded goal when the next bounded inspection is unclear. |
+| `fusion_assist` | Primary for routine work, including known small reads/searches/Git checks and exact command plans; configured Jev selects validated actions. |
+| `fusion_inspect` | Explicit recovery or escalation fallback; batch exact reads/searches/Git checks. |
 | `fusion_evidence` | Recover captured detail with explicit clipping, redaction and expiry information. |
 
 Commands are run through the CLI wrapper, `npx -y fusion-jev run -- program args...` (or `fusion-jev run -- program args...` after a global install), chosen and authorized by your host. Fusion does not intercept native tools or pick arbitrary shell commands.

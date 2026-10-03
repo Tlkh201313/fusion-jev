@@ -26,7 +26,7 @@ Reload the MCP connection afterwards. [Official Codex MCP documentation](https:/
 
 Import this folder through Codex's local plugin workflow. Its `.mcp.json` launches `npx -y fusion-jev@<version> stdio` (pinned to this adapter's version) and forwards environment variable names (not values) such as `TYPESAFE_API_KEY`, `FUSION_ENV_FILE`, `FUSION_WORKSPACE_ROOT` and `FUSION_WORKSPACE_ALLOWED_ROOTS`. The portable `plugin.json` and the `.codex-plugin/plugin.json` manifest describe the same adapter and advertise `fusion_assist`, `fusion_inspect` and `fusion_evidence`.
 
-Set the intended `FUSION_WORKSPACE_ROOT`, and any extra `FUSION_WORKSPACE_ALLOWED_ROOTS`, in the host launch environment. Native guidance is a preference: Codex retains reasoning, command authorization and correctness.
+Local stdio accepts the active project's absolute root directly. Set `FUSION_WORKSPACE_ACCESS=restricted` to opt into an exact-root allowlist. Native guidance is a preference: Codex retains reasoning, command authorization and correctness.
 
 ## Running commands through Fusion
 

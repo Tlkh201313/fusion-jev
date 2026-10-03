@@ -5,13 +5,13 @@ import type { FusionConfig } from '../types.js';
 const S = { type: 'string' },
   I = { type: 'integer' },
   B = { type: 'boolean' };
-const slimRoot = { root: { ...S, description: 'Approved absolute root' } };
+const slimRoot = { root: { ...S, description: 'Absolute root' } };
 export const slimTools: Record<
   string,
   { description: string; inputSchema: Record<string, unknown>; annotations: Record<string, boolean> }
 > = {
   fusion_assist: {
-    description: 'Bounded evidence gathering for a short task; commands return to host.',
+    description: 'Primary for every routine task, even small reads. Jev selects actions or host plans.',
     annotations: { readOnlyHint: true },
     inputSchema: {
       type: 'object',
@@ -21,6 +21,12 @@ export const slimTools: Record<
         ...slimRoot,
         task: { ...S, maxLength: 4000 },
         scope: S,
+        command: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['program', 'argv'],
+          properties: { program: S, argv: { type: 'array', maxItems: 128, items: S } },
+        },
         continuation: S,
         evidenceIds: { type: 'array', maxItems: 16, items: S },
         maxActions: { ...I, maximum: 6 },
@@ -29,8 +35,7 @@ export const slimTools: Record<
     },
   },
   fusion_inspect: {
-    description:
-      'Batch 1-8 read-only ops: outline/symbol (big files), grep (regex, ranked), read (repeat=unchanged; fresh), search (literal), list, git_*.',
+    description: 'Recovery/escalation fallback; routine tasks use fusion_assist.',
     annotations: { readOnlyHint: true },
     inputSchema: {
       type: 'object',

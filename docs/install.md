@@ -84,7 +84,7 @@ Use an existing trusted file with `fusion-jev setup --provider-env=/absolute/pat
 
 ## Workspace roots
 
-The server permits the canonical directory it starts in. If your host starts MCP servers elsewhere, set `FUSION_WORKSPACE_ROOT` in the launch environment. Extra exact roots go in `FUSION_WORKSPACE_ALLOWED_ROOTS`, separated by `;` on Windows or `:` on Linux/macOS. Use a tool's `path` argument for subdirectories; a nested directory is not automatically a new approved root.
+Local stdio accepts host-selected absolute project roots by default. Set FUSION_WORKSPACE_ACCESS=restricted to enforce the configured exact-root allowlist. Use path for subdirectories.
 
 ## Verify
 
@@ -116,3 +116,38 @@ Expect `"status": "ready"` and, without a key, a warning that the optional provi
 | Config location reported unsafe | Set `FUSION_CONFIG_HOME` as described above. Fusion never loosens permission checks. |
 
 The package and command are `fusion-jev`, but the configuration and evidence directory name stays `fusion-jev-mcp` for continuity, separate from any other installation of a command named `fusion`. To clear stored receipts, delete the evidence directory: `%LOCALAPPDATA%\fusion-jev-mcp\evidence` on Windows, or `${XDG_CACHE_HOME:-~/.cache}/fusion-jev-mcp/evidence` on Linux and macOS. Configuration lives in `~/.fusion-jev-mcp` on Windows and `${XDG_CONFIG_HOME:-~/.config}/fusion-jev-mcp` elsewhere (`FUSION_CONFIG_HOME` overrides the base).
+
+
+## Use Fusion without repeated tool prompts
+
+Local stdio accepts host-selected absolute project roots by default. Jev calls use the configured provider key automatically; do not add an extra access or approval step. This setting affects local stdio; authenticated HTTP keeps its fixed workspace.
+
+For an installed Codex plugin, set its exact installed plugin ID and server policy in `~/.codex/config.toml`:
+
+```toml
+[plugins."fusion-jev@personal".mcp_servers.fusion]
+default_tools_approval_mode = "approve"
+```
+
+For a direct `codex mcp add fusion-jev` connection, use `[mcp_servers.fusion-jev]` with the same `default_tools_approval_mode` field instead. Per-tool overrides and managed policies may take precedence. Restart the connection after changing settings.
+
+Claude Code uses `permissions.allow` in `~/.claude/settings.json`. Merge these entries into the existing allow list:
+
+```json
+{
+  "permissions": {
+    "allow": [
+      "mcp__plugin_fusion-jev_fusion__*",
+      "mcp__fusion-jev__*",
+      "Bash(fusion-jev run *)"
+    ]
+  }
+}
+```
+
+For a connection named `fusion`, use `mcp__fusion__*`. With a pinned npx command, add its exact version's `Bash(npx -y fusion-jev@VERSION run *)` rule. These command rules authorize the wrapped program and arguments, not just output formatting. Existing deny/ask rules and managed policies still apply.
+
+The adapters use Fusion first for supported reads, listings, searches, Git checks, commands and small repository tasks. Known reads do not call Jev; uncertain short tasks may use `fusion_assist`. The Claude hook reminds native Read/Grep/Glob/Bash calls without rewriting inputs or granting permission. Use native tools after an explicit failure or for unsupported operations such as editing or reading binary media.
+
+ChatGPT connection consent and confirmation policy belong to ChatGPT; the MCP server cannot switch off those client controls. A Responses API integration owned by your application can configure the remote MCP tool with `require_approval: "never"` when that is the intended policy.
+For the routine Jev workflow, including exact command plans and provider-call telemetry, see [routine delegation](routine-delegation.md).

@@ -14,9 +14,10 @@ config doctor  Alias for doctor.
 Environment: TYPESAFE_API_KEY for Jev; FUSION_FALLBACK=host.
 Use --provider-env=ABSOLUTE_PATH, FUSION_ENV_FILE, or a saved per-user path to load a trusted env file.
 Local stdio exposes named read-only file/search/Git tools, plus Jev routing.
-Pass an approved root for the active local project, or set FUSION_WORKSPACE_ROOT as a default.
-Additional local roots must be listed in FUSION_WORKSPACE_ALLOWED_ROOTS, separated
-by the platform path delimiter; roots outside that allowlist are rejected.
+Pass the absolute root of the active local project, or set FUSION_WORKSPACE_ROOT as a default.
+Local stdio accepts host-selected project roots without a separate approval.
+Set FUSION_WORKSPACE_ACCESS=restricted to limit roots to FUSION_WORKSPACE_ROOT
+and FUSION_WORKSPACE_ALLOWED_ROOTS (platform path delimiter).
 HTTP exposes workspace tools only when FUSION_HTTP_ENABLE_WORKSPACE=true and
 FUSION_WORKSPACE_ROOT points to a server-side project. Otherwise it is a
 general Jev decision service and does not expose repository files.

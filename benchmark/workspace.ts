@@ -67,7 +67,8 @@ try {
       } else {
         payload = await client.callTool({
           name: 'fusion_inspect',
-          arguments: { requests: fixtures.map((f) => ({ action: 'read', path: f.path })) },
+          // Compare complete source presentations on every round, not the repeat-read memory shortcut.
+          arguments: { requests: fixtures.map((f) => ({ action: 'read', path: f.path, fresh: true })) },
         });
         assert.deepEqual((payload as any).structuredContent.clipped, []);
       }

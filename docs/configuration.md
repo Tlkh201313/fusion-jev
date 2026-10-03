@@ -41,6 +41,7 @@ Setup creates a private user-owned directory and files and never overwrites or l
 | `FUSION_FALLBACK` | `host` | Keep uncertainty in the current host. The CLI rejects any other value. |
 | `FUSION_MCP_PROFILE` | `assist` | `assist` exposes three focused tools; `full` adds routing and inspection tools. |
 | `FUSION_WORKSPACE_ROOT` | process working directory | Exact canonical default project. |
+| `FUSION_WORKSPACE_ACCESS` | `host` | Local stdio accepts host-selected absolute roots; `restricted` enforces the exact-root allowlist. |
 | `FUSION_WORKSPACE_ALLOWED_ROOTS` | empty | Additional exact roots, separated by the platform path delimiter (`;` on Windows, `:` elsewhere). |
 | `JEV_TIMEOUT_MS` | `5000` | Provider request timeout. |
 | `FUSION_MIN_CONFIDENCE` | `0.8` | Uncalibrated acceptance threshold. |

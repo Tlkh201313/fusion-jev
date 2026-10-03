@@ -1,6 +1,6 @@
 {
   "name": "fusion-jev",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Grounded Fusion inspection and bounded Jev choices for coding chats",
   "author": {
     "name": "Fusion contributors"
@@ -15,11 +15,17 @@
     "logo": "./assets/logo.png",
     "logoDark": "./assets/logo.png",
     "shortDescription": "Grounded code evidence with bounded Jev choices.",
-    "longDescription": "Try Fusion for repository inspection and source-linked evidence. Jev selects only among bounded prebuilt actions when needed. Codex keeps reasoning, edits, commands, web research and correctness decisions. The adapter launches the published fusion-jev MCP server, pinned to its version, through npx.",
+    "longDescription": "Use Fusion assistance for routine reads, lists, searches, Git checks and commands, including small tasks. Configured Jev selects validated actions or exact host command plans. Fusion returns recoverable evidence; the host executes command plans and verifies results. Inspection is a recovery fallback. This adapter uses the version-pinned public package and official Jev.",
     "developerName": "Fusion contributors",
     "category": "Productivity",
-    "capabilities": ["Read"],
-    "defaultPrompt": ["Use Fusion when output would be long or noisy or several files are involved: fusion_inspect batches reads, outline/symbol/grep and Git evidence; fusion_assist takes a bounded task; fusion_evidence expands receipts or imports attributed host research. Use native tools for a single small read; do not call Jev for obvious reads.", "Codex owns reasoning, edits, command choice, permissions, research and correctness. Run tests, builds, lint, installs and log commands through fusion-jev run -- program argv... if installed globally, else npx -y fusion-jev@0.3.0 run -- program argv... (in PowerShell write '--'); use RTK/native tools when Fusion is unavailable or unsupported. Continue in Codex on escalation."]
+    "capabilities": [
+      "Read"
+    ],
+    "defaultPrompt": [
+      "Use Fusion through fusion_assist first for every supported routine task, including known small reads, searches, Git checks and commands. Configured Jev selects validated actions before Fusion gathers evidence. Do not substitute fusion_inspect for normal delegation; it is an explicit diagnostic or escalation/failure fallback. fusion_evidence recovers exact receipts only when needed.",
+      "For exact commands, call fusion_assist with task, absolute root and command:{program,argv}; execute its returned execution plan through fusion-jev run -- program argv... if installed globally, else npx -y fusion-jev@0.3.1 run -- program argv... (PowerShell: quote '--'; --raw for short output). Existing authorization and host permissions apply; do not ask for extra Jev access approval. Continue bounded assistance when needed. Host owns reasoning, edits and verification. Native tools only on unsupported work or explicit failure."
+    ]
   },
-  "mcpServers": "./.mcp.json"
+  "mcpServers": "./.mcp.json",
+  "skills": "./skills/"
 }

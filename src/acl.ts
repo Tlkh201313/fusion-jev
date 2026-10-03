@@ -9,7 +9,7 @@ import {
   realpathSync,
   rmSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { hostname, tmpdir } from 'node:os';
 import { isAbsolute, join, sep } from 'node:path';
 import { LIMITS } from './limits.js';
 import { sha256Hex } from './util/hash.js';
@@ -187,9 +187,17 @@ function failure(reason: unknown): Error {
 const ALWAYS_TRUSTED = new Set(['SY', 'BA', SYSTEM_SID, ADMINISTRATORS_SID]);
 
 /** Returns true only when every allow entry names the current user, SYSTEM or Administrators and the user has one. */
-export function sddlIsPrivate(sddl: string, currentSid: string): boolean {
+export function sddlIsPrivate(sddl: string, currentSid: string, currentAccountIsLocal = false): boolean {
   const match = /^D:([A-Z]*)((?:\([^()]*\))*)(?:S:.*)?$/.exec(sddl.trim());
   if (!match) return false;
+  // icacls serializes the built-in local accounts as LA/LG on some Windows hosts.
+  // Resolve them only when the caller is that exact account; neither alias is a generally trusted principal.
+  const currentAlias =
+    currentAccountIsLocal && /^S-1-5-21-\d+-\d+-\d+-500$/.test(currentSid)
+      ? 'LA'
+      : currentAccountIsLocal && /^S-1-5-21-\d+-\d+-\d+-501$/.test(currentSid)
+        ? 'LG'
+        : undefined;
   let self = false;
   for (const ace of match[2]!.split(/(?<=\))(?=\()/).filter(Boolean)) {
     const fields = ace.slice(1, -1).split(';');
@@ -197,7 +205,7 @@ export function sddlIsPrivate(sddl: string, currentSid: string): boolean {
     const [type, , , , , trustee] = fields as [string, string, string, string, string, string];
     if (type === 'D') continue; // The PowerShell check ignores deny entries too.
     if (type !== 'A') return false;
-    if (trustee === currentSid) self = true;
+    if (trustee === currentSid || (currentAlias !== undefined && trustee === currentAlias)) self = true;
     else if (!ALWAYS_TRUSTED.has(trustee)) return false;
   }
   return self;
@@ -219,8 +227,11 @@ export function parseIcaclsSave(bytes: Buffer): Map<string, string> | undefined 
   return entries;
 }
 
-function currentSidFrom(output: string): string | undefined {
-  return /^"[^"]*","(S-1-5-21-[\d-]+|S-1-5-\d+(?:-\d+)*)"\s*$/.exec(output.trim())?.[1];
+function currentIdentityFrom(output: string): { sid: string; local: boolean } | undefined {
+  const match = /^"([^"]*)","(S-1-5-21-[\d-]+|S-1-5-\d+(?:-\d+)*)"\s*$/.exec(output.trim());
+  if (!match) return undefined;
+  const authority = match[1]!.split('\\');
+  return { sid: match[2]!, local: authority.length === 2 && authority[0]!.toLowerCase() === hostname().toLowerCase() };
 }
 
 /** Directory entries must all be plain files for the fast check to speak for them. */
@@ -263,16 +274,17 @@ function planFastCheck(directory: string): FastPlan | undefined {
 }
 
 function judgeFastCheck(directory: string, plan: FastPlan, whoami: string): boolean {
-  const sid = currentSidFrom(whoami);
-  if (!sid) return false;
+  const identity = currentIdentityFrom(whoami);
+  if (!identity) return false;
+  const { sid, local } = identity;
   const dir = parseIcaclsSave(readFileSync(plan.dirSave));
-  if (!dir || dir.size !== 1 || !sddlIsPrivate([...dir.values()][0]!, sid)) return false;
+  if (!dir || dir.size !== 1 || !sddlIsPrivate([...dir.values()][0]!, sid, local)) return false;
   if (plan.names.length) {
     const files = parseIcaclsSave(readFileSync(plan.filesSave));
     if (!files) return false;
     for (const name of plan.names) {
       const sddl = files.get(name);
-      if (sddl === undefined || !sddlIsPrivate(sddl, sid)) return false;
+      if (sddl === undefined || !sddlIsPrivate(sddl, sid, local)) return false;
     }
   }
   // A repair that began after the reads above would have left its lock file behind.

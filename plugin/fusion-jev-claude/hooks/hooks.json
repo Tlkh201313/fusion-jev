@@ -3,13 +3,35 @@
     "SessionStart": [
       {
         "matcher": "startup|resume|clear|compact",
-        "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/session-start.cjs\"", "timeout": 5 }]
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/session-start.cjs\"",
+            "timeout": 5
+          }
+        ]
       }
     ],
     "PreToolUse": [
       {
         "matcher": "Read|Grep|Bash",
-        "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/pretool.cjs\"", "timeout": 3 }]
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/pretool.cjs\"",
+            "timeout": 3
+          }
+        ]
+      },
+      {
+        "matcher": "Read|Grep|Glob|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/routine-pretool.cjs\"",
+            "timeout": 3
+          }
+        ]
       }
     ]
   }
