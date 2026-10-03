@@ -353,7 +353,9 @@ test('direct reads reject binary and oversized files with actionable codes', asy
   try { await large.truncate(8 * 1024 * 1024 + 1); } finally { await large.close(); }
   const service = new WorkspaceService(root, selecting('unknown', []));
   await assert.rejects(service.read('binary.bin'), (error: any) => error.code === 'NOT_TEXT_FILE');
-  await assert.rejects(service.read('large.txt'), (error: any) => error.code === 'FILE_TOO_LARGE');
+  // Oversize files stream instead of failing with FILE_TOO_LARGE; this sparse file is NUL bytes, so it is rejected as non-text.
+  await assert.rejects(service.read('large.txt'), (error: any) => error.code === 'NOT_TEXT_FILE');
+  await assert.rejects(service.snapshot('large.txt'), (error: any) => error.code === 'FILE_TOO_LARGE');
 });
 
 test('large Git diff returns a bounded partial result instead of a buffer error', async t => {
@@ -486,8 +488,9 @@ test('search reports skipped content and reading rejects invalid UTF-8 past the 
   const service = new WorkspaceService(root, selecting('unknown', []));
   await assert.rejects(service.read('invalid.txt'), (e: any) => e.code === 'NOT_TEXT_FILE');
   const result = await service.search('needle');
-  assert.equal(result.matches.length, 0);
-  assert.equal(result.skippedFiles, 3);
+  // The 300 KB file is over the per-file limit but is now scanned within the byte budget instead of skipped.
+  assert.deepEqual(result.matches.map(match => match.path), ['oversize.txt']);
+  assert.equal(result.skippedFiles, 2);
   assert.equal(result.truncated, true);
 });
 

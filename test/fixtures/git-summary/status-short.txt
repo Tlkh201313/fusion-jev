@@ -1,0 +1,22 @@
+## docs/launch-ready-packaging...origin/docs/launch-ready-packaging
+ M benchmark/real-host.md
+ M plugin/fusion-jev-claude/README.md
+ M plugin/fusion-jev-claude/hooks/hooks.json
+ M plugin/fusion-jev-claude/scripts/session-start.cjs
+ M plugin/fusion-jev-claude/skills/assist/SKILL.md
+ M plugin/fusion-jev/.codex-plugin/plugin.json
+ M plugin/fusion-jev/plugin.json
+ M src/command-summary.ts
+ M src/evidence.ts
+ M test/plugin.test.ts
+?? benchmark/results/2026-10-03-raw-vs-fusion.csv
+?? benchmark/results/2026-10-03-raw-vs-fusion.json
+?? benchmark/results/2026-10-03-raw-vs-fusion.md
+?? benchmark/results/2026-10-03-real-host-claude.json
+?? benchmark/results/2026-10-03-real-host-claude.md
+?? plugin/fusion-jev-claude/scripts/pretool.cjs
+?? src/acl.ts
+?? src/git-summary.ts
+?? src/outline.ts
+?? test/fixtures/git-summary/
+?? test/hooks.test.ts

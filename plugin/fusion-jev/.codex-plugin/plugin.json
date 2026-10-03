@@ -19,7 +19,7 @@
     "developerName": "Fusion contributors",
     "category": "Productivity",
     "capabilities": ["Read"],
-    "defaultPrompt": ["Use Fusion when output would be long or noisy or several files are involved: fusion_inspect batches known reads, searches and Git evidence; fusion_assist takes a bounded task; fusion_evidence expands receipts or imports attributed host research. Use native tools for a single small read; do not call Jev for obvious reads.", "Codex owns reasoning, edits, command choice, permissions, research and correctness. Run tests, builds, lint, installs and log commands through fusion-jev run -- program argv... if installed globally, else npx -y fusion-jev@0.3.0 run -- program argv... (in PowerShell write '--'); use RTK/native tools when Fusion is unavailable or unsupported. Continue in Codex on escalation."]
+    "defaultPrompt": ["Use Fusion when output would be long or noisy or several files are involved: fusion_inspect batches reads, outline/symbol/grep and Git evidence; fusion_assist takes a bounded task; fusion_evidence expands receipts or imports attributed host research. Use native tools for a single small read; do not call Jev for obvious reads.", "Codex owns reasoning, edits, command choice, permissions, research and correctness. Run tests, builds, lint, installs and log commands through fusion-jev run -- program argv... if installed globally, else npx -y fusion-jev@0.3.0 run -- program argv... (in PowerShell write '--'); use RTK/native tools when Fusion is unavailable or unsupported. Continue in Codex on escalation."]
   },
   "mcpServers": "./.mcp.json"
 }

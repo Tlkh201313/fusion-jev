@@ -1,0 +1,191 @@
+commit fc9421970171a0e430b13f501f1e9d09c4dc7488
+Author: Your Name <you@example.com>
+Date:   Sat Oct 3 01:24:38 2026 +0100
+
+    Match the package smoke check to the current Codex default prompt
+    
+    Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+commit 193bc64490065d588a199010ccae3691019d114d
+Author: Your Name <you@example.com>
+Date:   Sat Oct 3 01:13:52 2026 +0100
+
+    Pass small output through, cut run overhead, and fix diagnostics from the first raw-vs-Fusion benchmark
+    
+    - run: output up to 1 KiB prints verbatim with one status line and no receipt; larger
+      results print only non-default flags and one recover line per hidden channel
+    - run: capture in memory before opening the private store, lazy-load server, SQLite and
+      workspace modules, and stop process-tree snapshots from holding the CLI open
+    - diagnostics: per-test diagnostics for the Node 24 node:test spec reporter; ignore
+      unified-diff hunks and git log message bodies (no false errors from git log -p)
+    - overview: package.json bin/main/exports entry points lead the map; wide dependency
+      rows are capped under a tight budget; outlines list exported declarations first
+    - benchmark: raw-vs-fusion script and first recorded results (2026-10-02)
+    - docs, README sample output, before/after graphic and CHANGELOG updated
+    
+    Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+commit 1677e6df0dd39ba500dfed37299c7ca961a9538f
+Author: Your Name <you@example.com>
+Date:   Fri Oct 2 21:01:17 2026 +0100
+
+    Add README graphics and pin npx setup commands outside the npx cache
+    
+    - docs/assets: hero banner, before/after fixture comparison and how-it-works diagram, embedded in README and docs/how-it-works.md
+    - setup run from an npx cache prints pinned npx -y fusion-jev@<version> commands instead of an ephemeral cache path, with the Windows cmd /c caveat
+    
+    Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+commit 8a22ed429c5ae1f4836f7cae49e935e721261c1e
+Author: Your Name <you@example.com>
+Date:   Fri Oct 2 19:30:33 2026 +0100
+
+    Pin host run guidance, harden Windows evidence checks, and align Codex prompts
+    
+    - Hook, skill, MCP instructions and Codex prompts name trigger-specific uses and the
+      pinned npx -y fusion-jev@<version> run form (global fusion-jev run first)
+    - sync-version keeps the pinned guidance in step with package.json
+    - CLI recovery hint names the copy that wrote the receipt
+    - Re-check recreated files instead of skipping their ACL check
+    - Compare Windows device IDs from two handles instead of skipping on dev 0
+    - Document the fusion-local -> fusion-jev marketplace migration
+    
+    Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+commit 5dfdd2495e14590dab7412132b4f341f8df2c8fe
+Author: Your Name <you@example.com>
+Date:   Thu Oct 1 23:29:09 2026 +0100
+
+    Ignore vanished files when hardening a shared Windows evidence cache
+    
+    Concurrent stores race on each other's transient SQLite journal files.
+    hardenWindowsAcl rethrew when a file it had enumerated was deleted and
+    re-created before the attribute read, failing one of two simultaneous
+    processes with 'Could not find file'. Missing files are now skipped;
+    any other error on an existing file still fails closed.
+    
+    Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+
+commit 7ac29140552796847fe1f8b4d4d68d94b25067cb
+Author: Your Name <you@example.com>
+Date:   Thu Oct 1 23:00:04 2026 +0100
+
+    Name the ACL failure reason and fail research process tests instead of hanging
+    
+    Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+
+commit 8dd914a8d693ff872e676ffd10f73878d17ec77e
+Author: Your Name <you@example.com>
+Date:   Thu Oct 1 23:00:03 2026 +0100
+
+    Tolerate Node 22.12 Windows stat dev=0 when verifying a workspace read
+    
+    On Node 22.12.0 for Windows, fs.promises.stat(path).dev is 0 while a file
+    handle's stat reports the volume serial, so every workspace file read was
+    rejected as 'Workspace path changed during access'. Compare dev only when
+    both values are real; inode and realpath checks are unchanged.
+    
+    Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+
+commit 8b547d1693abfa2aad8269459e67bf08ff9f51e5
+Author: Your Name <you@example.com>
+Date:   Thu Oct 1 22:24:34 2026 +0100
+
+    Accept Administrators-group ownership of private config for administrator callers
+    
+    Elevated Windows processes create files and directories owned by the
+    Administrators group (S-1-5-32-544), not their own SID, so setup and
+    doctor rejected their own private files with 'Wrong owner' (seen on the
+    GitHub windows runner). The group is already an accepted ACL principal;
+    it is now also accepted as owner when the caller is an administrator.
+    Standard users still require ownership by their own SID.
+    
+    Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+
+commit b7eb65f988b119a4414fcdafac06cd3eb1605365
+Author: Your Name <you@example.com>
+Date:   Thu Oct 1 22:18:49 2026 +0100
+
+    Report the failing check in private path permission errors on Windows
+    
+    Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+
+commit 785be115dfe61ca3dba4157063f98e89181e8514
+Author: Your Name <you@example.com>
+Date:   Thu Oct 1 22:18:49 2026 +0100
+
+    Fix POSIX test fixtures: 0600 receipt, flushed child stderr, new Git submodule refusal, bounded admission race
+    
+    Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+
+commit 058e36c3313e8b8a6cba75f2832ce8d26e872820
+Author: Your Name <you@example.com>
+Date:   Thu Oct 1 22:18:49 2026 +0100
+
+    Canonicalize temp paths in tests and use native realpath for roots
+    
+    macOS /var and Windows 8.3 TEMP (RUNNER~1) paths differ from the physical
+    paths the product reports. Tests now run with a physical TMPDIR/TEMP, and
+    assist root matching plus the Windows evidence cache check use
+    realpathSync.native like the workspace service does.
+    
+    Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+
+commit c81a0f6f973cbb78e9cc1f7bded7bc67f877601d
+Author: Your Name <you@example.com>
+Date:   Thu Oct 1 22:08:01 2026 +0100
+
+    CI: disable matrix fail-fast so every OS and Node version reports
+    
+    Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+
+commit be494da8bd35252250e2a1783ec2882fe8c6e29d
+Author: Your Name <you@example.com>
+Date:   Thu Oct 1 21:54:21 2026 +0100
+
+    Remove stray empty file created by a bad sed in the previous commit
+    
+    Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+
+commit 541e29189cbe54076720e266b605d26cadf56714
+Author: Your Name <you@example.com>
+Date:   Thu Oct 1 21:53:18 2026 +0100
+
+    Fix npx-only guidance, pin plugin launches, and harden release checks
+    
+    - Host guidance (MCP instructions, SessionStart hook, plugin manifests, docs) and
+      CLI recovery lines now use `npx -y fusion-jev ...`, valid without a global install.
+    - Pin plugin .mcp.json launches to fusion-jev@<version>; add scripts/sync-version.mjs
+      (npm `version` lifecycle, plus --check/--tag) and tests asserting versions agree.
+    - Release workflow fails unless tag, package.json, server.json and plugin pins match.
+    - package-smoke launches the manifest's own command+args offline from the packed tarball.
+    - Convert links from packed docs to files outside the tarball into GitHub URLs.
+    - README sample is real CLI output; document native Windows npx troubleshooting,
+      config/evidence directory name and a Releasing section (manual mcp-publisher step).
+    - Use io.github.Tlkh201313/fusion-jev: the registry matches the namespace case-sensitively.
+    
+    Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+
+commit 6e3f64bb237c52efb195dca171a4c1f78acace34
+Author: Your Name <you@example.com>
+Date:   Thu Oct 1 21:30:57 2026 +0100
+
+    Make fusion-jev installable and launch-ready: npx launch, rename, docs overhaul
+    
+    - Rename npm package fusion-jev-mcp -> fusion-jev; marketplace fusion-local -> fusion-jev
+    - Plugin MCP configs launch via `npx -y fusion-jev stdio` (no pre-installed binary needed)
+    - package.json: keywords, author, publishConfig, mcpName; add server.json for MCP registry
+    - Add release workflow (tag v* -> npm publish with provenance) and Dependabot
+    - Rewrite README (pitch, install per host, diagram, glossary, FAQ, limits)
+    - Add docs index, install, how-it-works, FAQ, examples README, CODE_OF_CONDUCT, issue templates
+    - Move internal launch/market docs out of docs/ (gitignored internal/)
+    - Add benchmark/real-host.md measurement template (numbers intentionally TBD)
+    - Config/evidence directory name unchanged (fusion-jev-mcp)
+    
+    Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+
+commit ccaefdd2db8a9461b7b8d627521ed332c7e00360
+Author: Tlkh201313 <203025202+Tlkh201313@users.noreply.github.com>
+Date:   Wed Sep 30 21:52:26 2026 +0100
+
+    Release Fusion Jev community MCP source

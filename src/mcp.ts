@@ -10,6 +10,7 @@ import { z } from 'zod';
 import { createTokenVerifier } from './oauth.js';
 import type { FusionConfig, RouteRequest, RouteResult, BatchResult, ToolDefinition, Decision } from './types.js';
 import { WorkspaceError, type WorkspaceService } from './workspace.js';
+import { orderSymbols, outlineLanguage, renderOutline, type OutlineResult } from './outline.js';
 import { dependencyEdges, fitBlocks, manifestEntryPoints, rankSources, renderDependencyRows } from './overview.js';
 import { EvidenceStore, type EvidenceReceipt } from './evidence.js';
 import { AssistanceService, type AssistResult } from './assist.js';
@@ -82,7 +83,44 @@ function listingContinuation(result: { nextOffset?: number | null; truncated?: b
     : result.truncated ? 'WARNING: listing truncated at pagination limit; remaining results unavailable.' : undefined;
 }
 
+function renderGrep(result: Record<string, any>): string {
+  const warnings = [
+    ...(result.skippedFiles ? [`WARNING: ${result.skippedFiles} unreadable, binary or over-budget files skipped${result.failedPaths?.length ? ` (${result.failedPaths.join(', ')})` : ''}.`] : []),
+    ...(result.partialFiles ? [`WARNING: ${result.partialFiles} large files scanned only up to 1 MiB each (${result.partialPaths.join(', ')}); later matches may be missed.`] : []),
+    ...(result.longLines ? [`NOTE: ${result.longLines} lines longer than 2000 chars were scanned only up to that length.`] : []),
+    ...(result.timedOut ? ['WARNING: scan deadline reached; results incomplete. Narrow path or glob.'] : []),
+    ...(result.scanLimited && !result.timedOut ? ['WARNING: file scan limit reached; narrow path or glob.'] : []),
+    ...(result.capped ? ['WARNING: hit storage cap reached; ranking covers the first 4000 matches.'] : []),
+  ];
+  const summary = `matches=${result.totalMatches} files=${result.filesMatched} scanned=${result.filesScanned} skipped=${result.skippedFiles}`;
+  if (result.mode === 'content') {
+    const emitted = new Set<string>();
+    const rows: string[] = [];
+    for (const hit of result.matches) for (const line of hit.context ?? [{ line: hit.line, text: hit.text, shortened: hit.shortened }]) {
+      const key = `${hit.path}:${line.line}`;
+      if (!emitted.has(key)) { emitted.add(key); rows.push(`${JSON.stringify(hit.path)}:${line.line}:${line.line === hit.line && hit.definition ? ' [def]' : ''} ${line.text}${line.line === hit.line && hit.shortened ? ' [excerpt]' : ''}`); }
+    }
+    const more = result.totalMatches - result.matches.length;
+    return [...(rows.length ? rows : ['(no matches)']), `${summary} shown=${result.matches.length}${more > 0 ? ` more=${more}; raise topK or narrow path/glob` : ''}`, ...warnings].join('\n');
+  }
+  const rows = result.files.map((file: any) => result.mode === 'count' ? `${file.count} ${JSON.stringify(file.path)}` : `${JSON.stringify(file.path)} (${file.count})`);
+  return [...(rows.length ? rows : ['(no matches)']), `${summary}${result.filesMatched > result.files.length ? ` more files=${result.filesMatched - result.files.length}` : ''}`, ...warnings].join('\n');
+}
+
+function renderSymbol(result: Record<string, any>): string {
+  const symbol = result.symbol;
+  const body = result.lines.map((l: any) => `${l.number}: ${l.text}`);
+  return [`${JSON.stringify(result.path)} ${symbol.kind} ${symbol.name} ${symbol.startLine}-${symbol.endLine}${symbol.approx ? '~' : ''}${symbol.contextLines ? ` (+/-${symbol.contextLines})` : ''}`,
+    ...body,
+    ...(result.nextLine !== null ? [`nextLine=${result.nextLine}`] : []),
+    ...(result.others.length ? [`AMBIGUOUS: also ${result.others.map((item: any) => `${item.name} ${item.kind} ${item.startLine}-${item.endLine}`).join('; ')}${result.moreOthers ? ` (+${result.moreOthers})` : ''}. Use Parent.name to choose.`] : []),
+    ...(result.shortenedLines ? ['WARNING: long lines shortened; inspect them with host tools before editing.'] : [])].join('\n');
+}
+
 function renderAction(result: Record<string, any>): string {
+  if (result.op === 'outline') return renderOutline(result.path, result as unknown as OutlineResult, { complete: result.complete });
+  if (result.op === 'symbol') return renderSymbol(result);
+  if (result.op === 'grep') return renderGrep(result);
   if (result.entries) {
     const continuation = listingContinuation(result);
     return [`${result.path}/`, ...result.entries.map((e: any) => `${e.type === 'directory' ? 'd' : 'f'} ${JSON.stringify(e.name)}`),
@@ -103,6 +141,7 @@ function renderAction(result: Record<string, any>): string {
       ...(result.nextOffset !== null ? [`nextOffset=${result.nextOffset}`]
         : result.truncated ? ['WARNING: results incomplete; no nextOffset available. Narrow the search.'] : []),
       ...(result.scanLimited ? ['WARNING: scan limit reached; narrow path.'] : []),
+      ...(result.partialFiles ? [`WARNING: ${result.partialFiles} large files scanned only up to 1 MiB each (${result.partialPaths.join(', ')}); results are incomplete.`] : []),
       ...(result.skippedFiles ? ['WARNING: unreadable, binary or oversized files skipped; results are incomplete.'] : [])].join('\n');
   }
   return `${result.command}\n${result.text || '(no output)'}${result.truncated ? '\nWARNING: output truncated; use a scoped host command for the remainder.' : ''}`;
@@ -275,6 +314,35 @@ async function repositoryOverview(service: WorkspaceService, signal: AbortSignal
   } };
 }
 
+// Compact advertised schemas for the default assist profile. The registered zod schemas still validate every call.
+const S = { type: 'string' }, I = { type: 'integer' }, B = { type: 'boolean' };
+const slimRoot = { root: { ...S, description: 'Approved absolute root' } };
+const slimTools: Record<string, { description: string; inputSchema: Record<string, unknown>; annotations: Record<string, boolean> }> = {
+  fusion_assist: { description: 'Bounded evidence gathering for a short task; commands return to host.',
+    annotations: { readOnlyHint: true },
+    inputSchema: { type: 'object', additionalProperties: false, required: ['task'], properties: { ...slimRoot,
+      task: { ...S, maxLength: 4000 }, scope: S, continuation: S, evidenceIds: { type: 'array', maxItems: 16, items: S },
+      maxActions: { ...I, maximum: 6 }, maxJevCalls: { ...I, maximum: 2 } } } },
+  fusion_inspect: { description: 'Batch 1-8 read-only ops: outline/symbol (big files), grep (regex, ranked), read (repeat=unchanged; fresh), search (literal), list, git_*.',
+    annotations: { readOnlyHint: true },
+    inputSchema: { type: 'object', additionalProperties: false, required: ['requests'], properties: { ...slimRoot,
+      maxChars: { ...I, minimum: 2000, maximum: 64000 },
+      requests: { type: 'array', minItems: 1, maxItems: 8, items: { type: 'object', additionalProperties: false, required: ['action'], properties: {
+        action: { enum: ['list', 'read', 'search', 'outline', 'symbol', 'grep', 'git_status', 'git_diff', 'git_log'] },
+        path: S, startLine: I, maxLines: { ...I, maximum: 300 }, fresh: B, name: S, pattern: S, glob: S, ignoreCase: B,
+        mode: { enum: ['content', 'files', 'count'] }, topK: { ...I, maximum: 50 }, contextLines: { ...I, maximum: 20 },
+        query: { oneOf: [S, { type: 'array', maxItems: 8, items: S }] }, maxResults: I, offset: I, staged: B } } } } } },
+  fusion_evidence: { description: 'Get receipt bytes or import host research (untrusted).',
+    annotations: { readOnlyHint: false },
+    inputSchema: { type: 'object', oneOf: [
+      { type: 'object', additionalProperties: false, required: ['action', 'id'], properties: { action: { const: 'get' }, id: S,
+        startByte: I, maxBytes: { ...I, maximum: 65536 }, expectedSha256: S, format: { enum: ['base64', 'utf8'] } } },
+      { type: 'object', additionalProperties: false, required: ['action', 'url', 'retrievedAt', 'passageId', 'passage', 'sourceTool'], properties: {
+        action: { const: 'import' }, url: S, title: S, retrievedAt: S, passageId: S, passage: S,
+        sourceTool: { enum: ['host_search', 'host_browser', 'host_docs'] } } },
+    ] } },
+};
+
 const coreToolNames = ['fusion_choose', 'fusion_choose_batch', 'fusion_route', 'fusion_route_batch'] as const;
 const fullWorkspaceToolNames = ['fusion_repo_overview', 'fusion_inspect', 'fusion_list_files', 'fusion_read_file',
   'fusion_search_text', 'fusion_git_status', 'fusion_git_diff', 'fusion_git_log', 'fusion_workspace',
@@ -289,11 +357,11 @@ export function createFusionMcpServer({ router, config, workspace, workspaceFact
   requestSignal?: () => AbortSignal | undefined): McpServer {
   const evidenceStore = evidence ?? new EvidenceStore();
   const workspaceHint = workspace ? 'This server has a fixed workspace; omit root.'
-    : workspaceFactory ? 'Use an exact approved absolute root; configure FUSION_WORKSPACE_ROOT or FUSION_WORKSPACE_ALLOWED_ROOTS first. Use path for subdirectories.' : '';
+    : workspaceFactory ? 'Pass an approved absolute root (FUSION_WORKSPACE_ROOT/ALLOWED_ROOTS); path selects subdirectories.' : '';
   const hasWorkspace = Boolean(workspace || workspaceFactory);
   const serverInfo = { name: 'fusion-jev', title: 'Fusion Jev', version: '0.3.0' };
   const server = new McpServer(serverInfo, {
-    instructions: `Prefer Fusion for supported inspection: assist for short tasks, inspect for known operations, evidence for expansion. Jev selects validated IDs only. Host owns reasoning, edits, command authorization and correctness. Run chosen commands through fusion-jev run -- program argv... if installed globally, else npx -y fusion-jev@${serverInfo.version} run -- program argv..., by default (--raw for small exact output; quote '--' in PowerShell). Escalate here; RTK/native tools are fallback. ${hasWorkspace ? workspaceHint : 'No workspace is exposed.'}`.trim(),
+    instructions: `Fusion inspection tools: assist (short repo tasks), inspect (batched read/outline/symbol/grep/git), evidence (expand receipts). Run noisy commands via fusion-jev run -- cmd args (else npx -y fusion-jev@${serverInfo.version} run -- ...; --raw for small exact output; quote '--' in PowerShell). Host owns reasoning, edits, approvals. RTK/native are fallback. ${hasWorkspace ? workspaceHint : 'No workspace is exposed.'}`.trim(),
   });
   const securitySchemes = config.http.oauth ? [{ type: 'oauth2', scopes: config.http.oauth.scopes }] : [{ type: 'noauth' }];
   const common = { annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true }, _meta: { securitySchemes } };
@@ -374,15 +442,22 @@ export function createFusionMcpServer({ router, config, workspace, workspaceFact
       catch (error) { return workspaceFailure(error); }
     });
   }
+  const pathField = z.string().min(1).max(4096);
   const inspectSchema = z.discriminatedUnion('action', [
     listDescriptor.inputSchema.omit({ root: true, format: true }).extend({ action: z.literal('list') }),
-    readDescriptor.inputSchema.omit({ root: true, format: true }).extend({ action: z.literal('read') }),
+    readDescriptor.inputSchema.omit({ root: true, format: true }).extend({ action: z.literal('read'), fresh: z.boolean().optional() }),
     searchDescriptor.inputSchema.omit({ root: true, format: true }).extend({ action: z.literal('search') }),
+    z.strictObject({ action: z.literal('outline'), path: pathField, fresh: z.boolean().optional() }),
+    z.strictObject({ action: z.literal('symbol'), path: pathField, name: z.string().min(1).max(200),
+      contextLines: z.number().int().min(0).max(20).optional(), fresh: z.boolean().optional() }),
+    z.strictObject({ action: z.literal('grep'), pattern: z.string().min(1).max(200), path: pathField.optional(),
+      glob: z.string().min(1).max(200).optional(), ignoreCase: z.boolean().optional(), mode: z.enum(['content', 'files', 'count']).optional(),
+      contextLines: z.number().int().min(0).max(3).optional(), topK: z.number().int().min(1).max(50).optional() }),
     z.strictObject({ action: z.enum(['git_status', 'git_diff', 'git_log']),
-      path: z.string().min(1).max(4096).optional(), staged: z.boolean().optional().describe('Git diff only; inspect index changes.') }),
+      path: pathField.optional(), staged: z.boolean().optional().describe('Git diff only; inspect index changes.') }),
   ]);
   const inspectDescriptor = { ...workspaceCommon, title: 'Inspect workspace in one call',
-    description: 'Batch 1–8 known reads or Git checks. No inference; clipping and failures are explicit.',
+    description: 'Batch 1-8 read-only ops, no inference. outline/symbol(name, Class.method ok) for big files; grep(pattern regex, glob, mode content|files|count, topK, contextLines<=3) ranked; read(startLine,maxLines<=300; repeats return "unchanged", fresh=true to re-read); search(query literal(s)); list; git_*.',
     inputSchema: z.strictObject({ ...rootField, requests: z.array(inspectSchema).min(1).max(8),
       maxChars: z.number().int().min(2000).max(64000).optional() }) };
   const assistDescriptor = { ...workspaceCommon, title: 'Bounded repository assistance',
@@ -444,6 +519,48 @@ export function createFusionMcpServer({ router, config, workspace, workspaceFact
     try { return assistResultContent(await getAssistance(input.root).assist(input, mergedSignal(extra.signal))); }
     catch (error) { return workspaceFailure(error); }
   });
+  // Per-session memory of what inspect already returned, so a repeated read costs one line instead of the text again.
+  const READ_MEMORY_LIMIT = 200;
+  type ReadMemo = { request: number; sha256: string; lines: string[]; first: number };
+  const readMemory = new Map<string, ReadMemo>();
+  let inspectCounter = 0;
+  const remember = (key: string, memo: ReadMemo) => {
+    readMemory.delete(key); readMemory.set(key, memo);
+    if (readMemory.size > READ_MEMORY_LIMIT) readMemory.delete(readMemory.keys().next().value!);
+  };
+  /** One-line replacement for a read the host has already seen, or the changed lines when only a few moved. */
+  const dedupeRead = (service: WorkspaceService, request: { action: string; fresh?: boolean }, result: Record<string, any>, requestNo: number): string | undefined => {
+    const sha = typeof result.sha256 === 'string' ? result.sha256 : undefined;
+    if (!sha || !Array.isArray(result.lines) || !result.lines.length) return undefined;
+    const first = result.lines[0].number;
+    const last = result.lines[result.lines.length - 1].number;
+    const key = `${service.root}\0${request.action}\0${result.path}\0${result.op === 'symbol' ? result.symbol.name : ''}\0${first}-${last}`;
+    const texts: string[] = result.lines.map((line: any) => line.text);
+    const previous = readMemory.get(key);
+    if (previous && !request.fresh) {
+      if (previous.sha256 === sha) return `${result.path}:${first}-${last} unchanged since request #${previous.request} (sha256 ${sha.slice(0, 8)}); not repeated. Pass fresh=true to see it again.`;
+      remember(key, { request: requestNo, sha256: sha, lines: texts, first });
+      if (previous.lines.length === texts.length && previous.lines.every((text, i) => text === texts[i]))
+        return `${result.path}:${first}-${last} unchanged since request #${previous.request}; file changed elsewhere (sha256 ${previous.sha256.slice(0, 8)} -> ${sha.slice(0, 8)}).`;
+      const changed = texts.flatMap((text, i) => previous.lines.length === texts.length && previous.lines[i] !== text ? [`${first + i}: ${text}`] : []);
+      if (changed.length && changed.length <= 10 && !result.shortenedLines)
+        return [`${result.path}:${first}-${last} changed since request #${previous.request}; ${changed.length} of ${texts.length} lines differ:`, ...changed].join('\n');
+      return undefined;
+    }
+    remember(key, { request: requestNo, sha256: sha, lines: texts, first });
+    return undefined;
+  };
+  const compactOutline = (outline: { symbols: OutlineResult['symbols']; totalLines: number }): string => {
+    const top = orderSymbols(outline.symbols).filter(symbol => !symbol.parent);
+    const parts: string[] = [];
+    let chars = 0;
+    for (const symbol of top) {
+      const part = `${symbol.name}:${symbol.startLine}-${symbol.endLine}`;
+      if (chars + part.length > 600) break;
+      parts.push(part); chars += part.length + 2;
+    }
+    return `Outline of ${outline.totalLines} lines (name:start-end, exported first)${top.length > parts.length ? `, ${top.length - parts.length} more via outline` : ''}: ${parts.join(', ') || '(no symbols)'}`;
+  };
   if (hasWorkspace) server.registerTool('fusion_inspect', inspectDescriptor, async (input, extra) => {
     try {
       const service = getWorkspace(input.root);
@@ -458,18 +575,50 @@ export function createFusionMcpServer({ router, config, workspace, workspaceFact
         try {
           if (signal.aborted) throw new WorkspaceError(signal.reason?.name === 'TimeoutError' ? 'TIMEOUT' : 'CANCELLED', 'Inspection stopped');
           executed++;
-          const result = request.action === 'list' ? await service.list(request.path, resultLimit(request.maxResults, 30), request.offset, signal)
+          const requestNo = ++inspectCounter;
+          const result: Record<string, any> = request.action === 'list' ? await service.list(request.path, resultLimit(request.maxResults, 30), request.offset, signal)
             : request.action === 'read' ? await service.read(request.path, request.startLine, request.maxLines ?? 80, signal)
             : request.action === 'search' ? await service.search(request.query, request.path, resultLimit(request.maxResults, 20), signal, request)
+            : request.action === 'outline' ? await service.outline(request.path, signal)
+            : request.action === 'symbol' ? await service.symbol(request.path, request.name, request.contextLines, signal)
+            : request.action === 'grep' ? await service.grep(request, signal)
             : await service.git(request.action === 'git_status' ? 'status' : request.action === 'git_diff' ? 'diff' : 'log', signal, request);
-          const rendered = limitNotice('maxResults' in request ? request.maxResults : undefined) + renderAction(result);
+          let body: string | undefined;
+          if (request.action === 'read' || request.action === 'symbol') body = dedupeRead(service, request, result, requestNo);
+          else if (request.action === 'outline' && typeof result.sha256 === 'string') {
+            const key = `${service.root}\0outline\0${result.path}`;
+            const previous = readMemory.get(key);
+            if (previous && previous.sha256 === result.sha256 && !request.fresh)
+              body = `${result.path} outline unchanged since request #${previous.request} (sha256 ${result.sha256.slice(0, 8)}); not repeated.`;
+            else remember(key, { request: requestNo, sha256: result.sha256, lines: [], first: 0 });
+          }
+          if (body === undefined) {
+            body = renderAction(result);
+            // A big file read without a range gets a compact symbol map so the next read can be targeted.
+            if (request.action === 'read' && request.startLine === undefined && request.maxLines === undefined && result.nextLine !== null
+              && !result.streamed && outlineLanguage(result.path)) {
+              try { body = `${compactOutline(await service.outline(request.path, signal))}\n${body}`; } catch { /* The read itself is already complete evidence. */ }
+            }
+          }
+          const rendered = limitNotice('maxResults' in request ? request.maxResults : undefined) + body;
           const evidenceRefs: EvidenceRef[] = [];
-          if ('lines' in result || 'matches' in result) {
-            const paths = 'lines' in result ? [result.path] : [...new Set(result.matches.map(hit => hit.path))];
+          const sourceKind = result.op === 'grep' ? 'grep' : result.op === 'outline' ? 'outline' : result.op === 'symbol' ? 'symbol' : 'lines' in result ? 'read' : 'matches' in result ? 'search' : undefined;
+          if (sourceKind) {
+            const paths: string[] = result.op === 'grep' ? [...new Set<string>((result.mode === 'content' ? result.matches : result.files).map((item: any) => item.path))]
+              : 'lines' in result || result.op === 'outline' ? [result.path] : [...new Set<string>(result.matches.map((hit: any) => hit.path))];
+            const uncaptured = new Set<string>(result.streamed ? [result.path] : result.uncaptured ?? []);
             const captures = new Map(service.sourceCaptures(result).map(snapshot => [snapshot.path, snapshot]));
+            let derived: EvidenceReceipt | undefined;
             for (const path of paths) {
               try {
                 const snapshot = captures.get(path);
+                if (!snapshot && uncaptured.has(path)) {
+                  // Streamed or budget-limited files have no complete byte capture; keep the rendered answer as the receipt.
+                  derived ??= evidenceStore.capture({ source: { kind: 'derived_workspace', root: service.root, path, operation: 'search', query: sourceKind },
+                    bytes: Buffer.from(rendered), originalBytes: null, truncated: true });
+                  evidenceRefs.push({ receipt: derived });
+                  continue;
+                }
                 if (!snapshot) throw new Error('Source capture unavailable');
                 evidenceRefs.push({ receipt: evidenceStore.capture({ source: { kind: 'workspace', root: service.root, path: snapshot.path },
                   bytes: snapshot.bytes, originalBytes: snapshot.originalBytes }) });
@@ -608,8 +757,10 @@ export function createFusionMcpServer({ router, config, workspace, workspaceFact
     ['fusion_choose', choiceDescriptor], ['fusion_choose_batch', choiceBatchDescriptor], ['fusion_route', routeDescriptor],
     ['fusion_route_batch', batchDescriptor], ['fusion_assist', assistDescriptor], ['fusion_evidence', evidenceDescriptor],
   ]);
+  const slim = config.mcpProfile !== 'full' && hasWorkspace;
   server.server.setRequestHandler(ListToolsRequestSchema, () => ({ tools:
     mcpToolNames(config.mcpProfile, hasWorkspace).map(name => {
+      if (slim && slimTools[name]) return { name, ...slimTools[name]!, ...(config.http.oauth ? { securitySchemes, _meta: { securitySchemes } } : {}) };
       const tool = descriptors.get(name)!;
       return {
       name, ...tool, securitySchemes,

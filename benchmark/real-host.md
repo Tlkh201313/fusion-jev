@@ -32,11 +32,14 @@ Always record the host, host version, OS and date. Keep small-output and slow-st
 
 | Workload | Raw bytes | Compact bytes | Est. tokens raw (bytes/4) | Est. tokens compact (bytes/4) | Receipt recovered (Y/N) | Host | Date |
 | --- | ---: | ---: | ---: | ---: | :---: | --- | --- |
-| Failing `tsc` | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
-| `npm test` failure | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
+| Failing `tsc` (`npm run typecheck`, 1 planted error) | 159¹ | 188¹ | 40 | 47 | n/a (shown verbatim, no receipt) | Claude Code 2.1.288, sonnet | 2026-10-03 |
+| Test failure (`npx tsx --test`, 4 files, 22 tests, 1 planted failure) | 3,320² | 645¹ | 830 | 162 | not byte-checked; host expanded it in 2 of 2 runs | Claude Code 2.1.288, sonnet | 2026-10-03 |
 | `git log -p` | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
 | Failing build | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
 
-Notes (versions, project, runs, flags seen, host-reported token usage): TBD
+Notes (versions, project, runs, flags seen, host-reported token usage): Project = this repository at `fc94219` with a planted error, Windows 11, Node v24.12.0, fusion-jev 0.3.0 local build. 2 runs per arm (typecheck sizes identical in both runs; test stdout 3,320 and 3,322 bytes). Flags seen on the test receipt: `stdout=<id> stdoutStoredBytes=3320`, `omittedBytes=3320`, with no truncation or redaction. The `git log -p` and failing-build rows were not run. Host-reported session tokens and cost for both arms are in [results/2026-10-03-real-host-claude.md](results/2026-10-03-real-host-claude.md): for these small outputs, whole-session cost was +4% (typecheck) and −12% (test failure, confounded) with Fusion, at n = 2.
 
-A host-less, output-only measurement on real commands (bytes, time, exit codes, receipt recovery; not host token usage) is in [results/2026-10-02-raw-vs-fusion.md](results/2026-10-02-raw-vs-fusion.md). It does not fill this table.
+¹ Characters of the tool result the host returned to the model. This includes Claude Code's `Exit code 1` prefix and, for Fusion, the status line or receipt.
+² Raw stdout bytes as captured by Fusion's own receipt (`stdoutStoredBytes`). The baseline arm's native output in that A/B differed (it had a second, environment-dependent failure), so it is not used as the raw value here.
+
+A host-less, output-only measurement on real commands (bytes, time, exit codes, receipt recovery; not host token usage) is in [results/2026-10-02-raw-vs-fusion.md](results/2026-10-02-raw-vs-fusion.md). It does not fill this table. A re-run on the current output format is in [results/2026-10-03-raw-vs-fusion.md](results/2026-10-03-raw-vs-fusion.md).

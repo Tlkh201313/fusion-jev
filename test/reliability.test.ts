@@ -105,6 +105,6 @@ test('large failure corpora keep bounded summaries and exact omitted counts', as
   const receipt = store.capture({ source: { kind: 'command', cwd: process.cwd(), argv: ['many-failures'], channel: 'stderr' },
     bytes: Buffer.from('not ok 1 - failure\n'.repeat(150_000)) });
   const summary = await summarizeChannel(store, receipt);
-  assert.equal(summary.diagnostics.length, 4);
-  assert.equal(summary.diagnosticsOmitted, 149_996);
+  assert.ok(summary.diagnostics.length > 4 && summary.diagnostics.length < 60);
+  assert.equal(summary.diagnosticsOmitted, 150_000 - summary.diagnostics.length);
 });

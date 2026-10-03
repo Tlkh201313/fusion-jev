@@ -1,15 +1,19 @@
 import { constants } from 'node:fs';
-import { open, readdir, realpath, stat } from 'node:fs/promises';
+import { open, readdir, realpath, stat, type FileHandle } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { accessSync, existsSync, lstatSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { delimiter, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { FusionExecutor, type ExecutionResult } from './executor.js';
 import type { Candidate, RouteRequest, RouteResult, ToolDefinition } from './types.js';
+import { classifyHit, compileSafeRegex, globMatcher, rankHits, UnsafePatternError, type GrepHit } from './grep.js';
+import { OutlineBuilder, findSymbols, outlineLanguage, type OutlineSymbol } from './outline.js';
 
 export interface WorkspaceRequest { task: string; path?: string; query?: string; maxResults?: number }
 export interface WorkspaceResult { route: RouteResult; execution?: ExecutionResult }
 export interface WorkspaceRouter { route(request: RouteRequest, signal?: AbortSignal): Promise<RouteResult> }
+export interface GrepOptions { pattern: string; path?: string; glob?: string; ignoreCase?: boolean; mode?: 'content' | 'files' | 'count'; contextLines?: number; topK?: number }
 export interface SearchOptions { contextLines?: number; offset?: number }
 export type WorkspaceErrorCode = 'INVALID_REQUEST' | 'INVALID_PATH' | 'NOT_FOUND' | 'NOT_A_FILE' | 'NOT_A_DIRECTORY' | 'NOT_TEXT_FILE' | 'FILE_TOO_LARGE' | 'GIT_FAILED' | 'CANCELLED' | 'TIMEOUT';
 export class WorkspaceError extends Error {
@@ -24,6 +28,13 @@ const MAX_LINE_CHARS = 2000;
 const MAX_READ_CHARS = 24_000;
 const MAX_READ_FILE_BYTES = 8 * 1024 * 1024;
 const MAX_GIT_BYTES = 32 * 1024;
+const MAX_STREAM_SCAN_BYTES = 64 * 1024 * 1024;
+const LARGE_FILE_SCAN_BYTES = 1024 * 1024;
+const TOTAL_LARGE_SCAN_BYTES = 32 * 1024 * 1024;
+const MAX_GREP_PATTERN = 200;
+const MAX_GREP_LINE = 2000;
+const MAX_GREP_HITS = 4000;
+const GREP_DEADLINE_MS = 10_000;
 const EXCLUDED = new Set(['.git', 'node_modules', 'dist', '.next', '.ssh', '.aws', '.azure', '.gnupg', '.codex', '.npmrc', '.superpowers']);
 
 function excludedName(name: string): boolean {
@@ -142,8 +153,8 @@ function* textLines(content: string): Generator<string> {
   if (start < content.length) yield content.slice(start);
 }
 
-/** Verify the opened file's identity and canonical target before reading any bytes. */
-export async function safeWorkspaceBytes(root: string, target: string, signal: AbortSignal = AbortSignal.timeout(15000), maxBytes = MAX_READ_FILE_BYTES): Promise<Buffer> {
+/** Verify the opened file's identity and canonical target before running `body`, and that it did not change meanwhile. */
+async function withVerifiedFile<T>(root: string, target: string, signal: AbortSignal, body: (file: FileHandle, size: number) => Promise<T>): Promise<T> {
   checkSignal(signal);
   // root is the previously approved canonical directory, not fresh authority
   // to follow a junction installed after workspace path resolution.
@@ -173,7 +184,19 @@ export async function safeWorkspaceBytes(root: string, target: string, signal: A
     }
     if (before !== after || !opened.isFile() || !current.isFile() || opened.dev !== current.dev || opened.ino !== current.ino)
       throw new WorkspaceError('INVALID_PATH', 'Workspace path changed during access');
-    if (opened.size > maxBytes) throw new WorkspaceError('FILE_TOO_LARGE', 'File exceeds the read limit');
+    const value = await body(file, opened.size);
+    const final = await file.stat();
+    if (final.size !== opened.size || final.mtimeMs !== opened.mtimeMs || final.ctimeMs !== opened.ctimeMs)
+      throw new WorkspaceError('INVALID_PATH', 'Workspace file changed during access');
+    checkSignal(signal);
+    return value;
+  } finally { await file.close(); }
+}
+
+/** Verify the opened file's identity and canonical target before reading any bytes. */
+export async function safeWorkspaceBytes(root: string, target: string, signal: AbortSignal = AbortSignal.timeout(15000), maxBytes = MAX_READ_FILE_BYTES): Promise<Buffer> {
+  return withVerifiedFile(root, target, signal, async (file, size) => {
+    if (size > maxBytes) throw new WorkspaceError('FILE_TOO_LARGE', 'File exceeds the read limit');
     const chunks: Buffer[] = [];
     const sample = Buffer.alloc(64 * 1024);
     let total = 0;
@@ -185,12 +208,57 @@ export async function safeWorkspaceBytes(root: string, target: string, signal: A
       if (total > maxBytes) throw new WorkspaceError('FILE_TOO_LARGE', 'File exceeds the read limit');
       chunks.push(Buffer.from(sample.subarray(0, bytesRead)));
     }
-    const final = await file.stat();
-    if (final.size !== opened.size || final.mtimeMs !== opened.mtimeMs || final.ctimeMs !== opened.ctimeMs)
-      throw new WorkspaceError('INVALID_PATH', 'Workspace file changed during access');
-    checkSignal(signal);
     return Buffer.concat(chunks, total);
-  } finally { await file.close(); }
+  });
+}
+
+export interface LineStreamStats { size: number; bytes: number; lines: number; complete: boolean; stopped: boolean }
+
+/**
+ * Stream a verified UTF-8 file as lines without holding it in memory. `onLine` may return false to stop early.
+ * Scans at most `maxBytes`; `complete` is false when that budget ended the scan before end of file.
+ * Lines longer than 8 KiB are truncated (only their start is delivered).
+ */
+export async function streamWorkspaceLines(root: string, target: string, signal: AbortSignal,
+  onLine: (text: string, number: number) => boolean | void, maxBytes = MAX_STREAM_SCAN_BYTES): Promise<LineStreamStats> {
+  return withVerifiedFile(root, target, signal, async (file, size) => {
+    const decoder = new TextDecoder('utf-8', { fatal: true });
+    const buffer = Buffer.alloc(64 * 1024);
+    let carry = '', pendingReturn = false, number = 0, total = 0, stopped = false, eof = false;
+    const emit = (text: string) => { number++; if (onLine(text, number) === false) stopped = true; };
+    try {
+      while (!stopped && total < maxBytes) {
+        checkSignal(signal);
+        const { bytesRead } = await file.read(buffer, 0, Math.min(buffer.length, maxBytes - total), null);
+        if (!bytesRead) { eof = true; break; }
+        total += bytesRead;
+        const chunk = buffer.subarray(0, bytesRead);
+        if (chunk.includes(0)) throw new WorkspaceError('NOT_TEXT_FILE', 'File is not UTF-8 text');
+        let text = decoder.decode(chunk, { stream: true });
+        if (pendingReturn) { pendingReturn = false; if (text.startsWith('\n')) text = text.slice(1); }
+        const breaks = /\r\n|\n|\r/g;
+        let start = 0;
+        for (let match = breaks.exec(text); match && !stopped; match = breaks.exec(text)) {
+          const line = carry + text.slice(start, match.index);
+          carry = '';
+          start = match.index + match[0].length;
+          emit(line);
+          if (match[0] === '\r' && start === text.length) pendingReturn = true;
+        }
+        if (!stopped) carry = (carry + text.slice(start)).slice(0, 8192);
+      }
+      if (!stopped && (eof || total >= size)) {
+        const tail = carry + decoder.decode();
+        eof = true;
+        if (tail) emit(tail);
+      }
+    } catch (error) {
+      if (error instanceof WorkspaceError) throw error;
+      if (error instanceof TypeError) throw new WorkspaceError('NOT_TEXT_FILE', 'File is not valid UTF-8 text');
+      throw error;
+    }
+    return { size, bytes: total, lines: number, complete: eof && !stopped || (!stopped && total >= size), stopped };
+  });
 }
 
 export class WorkspaceService {
@@ -290,31 +358,109 @@ export class WorkspaceService {
   private async readLines(path: string, startLine: number, maxLines: number, maxChars: number, signal: AbortSignal) {
     checkSignal(signal);
     const target = await this.resolvePath(path);
-    if (!(await stat(target)).isFile()) throw new WorkspaceError('NOT_A_FILE', 'Path is not a file');
+    const info = await stat(target);
+    if (!info.isFile()) throw new WorkspaceError('NOT_A_FILE', 'Path is not a file');
+    const lines: Array<{ number: number; text: string }> = [];
+    let chars = 0;
+    let nextLine: number | null = null;
+    let shortenedLines = false;
+    // Returns false once the requested window is full so a streaming caller can stop reading.
+    const take = (line: string, number: number): boolean => {
+      if (number < startLine) return true;
+      if (lines.length >= maxLines || chars >= maxChars) { nextLine = number; return false; }
+      const text = line.slice(0, Math.min(MAX_LINE_CHARS, maxChars - chars));
+      if (text.length < line.length) shortenedLines = true;
+      lines.push({ number, text });
+      chars += text.length;
+      return true;
+    };
+    if (info.size > MAX_READ_FILE_BYTES) {
+      // Oversize files stream just the requested window; the receipt is derived from the rendered lines.
+      const stats = await streamWorkspaceLines(this.root, target, signal, (line, number) => take(line, number));
+      if (nextLine === null && !stats.complete) {
+        if (!lines.length) throw new WorkspaceError('FILE_TOO_LARGE', 'Start line is beyond the 64 MiB scan budget');
+        shortenedLines = true;
+      }
+      checkSignal(signal);
+      return { path: this.outputPath(target), startLine, lines, nextLine, shortenedLines, streamed: true as const,
+        sha256: createHash('sha256').update(`${info.size}:${info.mtimeMs}`).digest('hex') };
+    }
     const raw = await safeWorkspaceBytes(this.root, target, signal);
     let content: string;
     try {
       if (raw.includes(0)) throw new Error('binary');
       content = new TextDecoder('utf-8', { fatal: true }).decode(raw);
     } catch { throw new WorkspaceError('NOT_TEXT_FILE', 'File is not valid UTF-8 text'); }
-    const lines: Array<{ number: number; text: string }> = [];
     let number = 0;
-    let chars = 0;
-    let nextLine: number | null = null;
-    let shortenedLines = false;
-      for (const line of textLines(content)) {
-        checkSignal(signal);
-        number++;
-        if (number < startLine) continue;
-        if (lines.length >= maxLines || chars >= maxChars) { nextLine = number; break; }
-        const text = line.slice(0, Math.min(MAX_LINE_CHARS, maxChars - chars));
-        if (text.length < line.length) shortenedLines = true;
-        lines.push({ number, text });
-        chars += text.length;
-      }
+    for (const line of textLines(content)) {
+      checkSignal(signal);
+      number++;
+      if (!take(line, number)) break;
+    }
     checkSignal(signal);
-    const result = { path: this.outputPath(target), startLine, lines, nextLine, shortenedLines };
+    const result = { path: this.outputPath(target), startLine, lines, nextLine, shortenedLines,
+      sha256: createHash('sha256').update(raw).digest('hex') };
     this.sourceByResult.set(result, new Map([[result.path, raw]]));
+    return result;
+  }
+
+  /** Language-aware symbol table with line ranges; any size up to the 64 MiB scan budget. */
+  async outline(path: string, signal: AbortSignal = AbortSignal.timeout(15000)) {
+    checkSignal(signal);
+    const target = await this.resolvePath(path);
+    const info = await stat(target);
+    if (!info.isFile()) throw new WorkspaceError('NOT_A_FILE', 'Path is not a file');
+    const output = this.outputPath(target);
+    const language = outlineLanguage(output);
+    if (!language) throw new WorkspaceError('INVALID_REQUEST', 'No outline support for this file type; use read or grep');
+    const builder = new OutlineBuilder(language);
+    let raw: Buffer | undefined;
+    let complete = true;
+    let sha256: string;
+    if (info.size <= MAX_READ_FILE_BYTES) {
+      raw = await safeWorkspaceBytes(this.root, target, signal);
+      let content: string;
+      try {
+        if (raw.includes(0)) throw new Error('binary');
+        content = new TextDecoder('utf-8', { fatal: true }).decode(raw);
+      } catch { throw new WorkspaceError('NOT_TEXT_FILE', 'File is not valid UTF-8 text'); }
+      let number = 0;
+      for (const line of textLines(content)) { checkSignal(signal); builder.push(line, ++number); }
+      sha256 = createHash('sha256').update(raw).digest('hex');
+    } else {
+      const stats = await streamWorkspaceLines(this.root, target, signal, (line, number) => { builder.push(line, number); });
+      complete = stats.complete;
+      sha256 = createHash('sha256').update(`${info.size}:${info.mtimeMs}`).digest('hex');
+    }
+    const outline = builder.finish();
+    const result = { op: 'outline' as const, path: output, language, symbols: outline.symbols, totalLines: outline.totalLines,
+      complete, streamed: !raw, sha256 };
+    if (raw) this.sourceByResult.set(result, new Map([[output, raw]]));
+    return result;
+  }
+
+  /** Source lines of one named symbol (plus context), resolved through the regex outline. */
+  async symbol(path: string, name: string, contextLines = 0, signal: AbortSignal = AbortSignal.timeout(15000)) {
+    if (typeof name !== 'string' || !name.trim() || name.length > 200 || !Number.isSafeInteger(contextLines) || contextLines < 0 || contextLines > 20)
+      throw new WorkspaceError('INVALID_REQUEST', 'Invalid symbol name or context');
+    const outline = await this.outline(path, signal);
+    const matches = findSymbols(outline.symbols, name);
+    if (!matches.length) {
+      const needle = name.trim().toLowerCase();
+      const similar = outline.symbols.filter(sym => sym.name.toLowerCase().includes(needle)).slice(0, 8)
+        .map(sym => `${sym.parent ? `${sym.parent}.` : ''}${sym.name} ${sym.startLine}-${sym.endLine}`);
+      throw new WorkspaceError('NOT_FOUND', `Symbol not found: ${name.trim().slice(0, 80)}.${similar.length ? ` Similar: ${similar.join(', ')}.` : ' Use outline to list symbols.'}`);
+    }
+    const best = matches[0]!;
+    const first = Math.max(1, best.startLine - contextLines);
+    const span = best.endLine - best.startLine + 1 + contextLines * 2;
+    const read = await this.readLines(path, first, Math.min(MAX_READ_LINES, span), MAX_READ_CHARS, signal);
+    const describe = (sym: OutlineSymbol) => ({ name: sym.parent ? `${sym.parent}.${sym.name}` : sym.name, kind: sym.kind,
+      startLine: sym.startLine, endLine: sym.endLine });
+    const result = { ...read, op: 'symbol' as const, symbol: { ...describe(best), approx: Boolean(best.approx), contextLines },
+      others: matches.slice(1, 9).map(describe), moreOthers: Math.max(0, matches.length - 9) };
+    const captured = this.sourceByResult.get(read);
+    if (captured) this.sourceByResult.set(result, captured);
     return result;
   }
 
@@ -419,6 +565,10 @@ export class WorkspaceService {
     let filesScanned = 0;
     let omittedEntries = false;
     let skippedFiles = 0;
+    let partialFiles = 0;
+    let largeBudget = TOTAL_LARGE_SCAN_BYTES;
+    const partialPaths: string[] = [];
+    const uncaptured: string[] = [];
     let matchedLines = 0;
     let hasMore = false;
     let visited = 0;
@@ -451,16 +601,26 @@ export class WorkspaceService {
         continue;
       }
       if (!info.isFile()) continue;
-      if (info.size > MAX_SEARCH_FILE_BYTES) { skippedFiles++; continue; }
-      filesScanned++;
-      let content: string;
-      let raw: Buffer;
-      try {
-        raw = await safeWorkspaceBytes(this.root, current, signal, MAX_SEARCH_FILE_BYTES);
-        content = decodeText(raw, false);
+      let lines: string[];
+      let raw: Buffer | undefined;
+      if (info.size > MAX_SEARCH_FILE_BYTES) {
+        // Large files are scanned up to a byte budget and reported instead of silently skipped.
+        if (largeBudget <= 0) { skippedFiles++; continue; }
+        filesScanned++;
+        lines = [];
+        try {
+          const stats = await streamWorkspaceLines(this.root, current, signal, line => { lines.push(line); }, Math.min(LARGE_FILE_SCAN_BYTES, largeBudget));
+          largeBudget -= stats.bytes;
+          if (!stats.complete) { partialFiles++; if (partialPaths.length < 5) partialPaths.push(this.outputPath(current)); }
+        } catch (error) {
+          if (error instanceof WorkspaceError && (error.code === 'CANCELLED' || error.code === 'TIMEOUT')) throw error;
+          filesScanned--; skippedFiles++; continue;
+        }
+      } else {
+        filesScanned++;
+        try { raw = await safeWorkspaceBytes(this.root, current, signal, MAX_SEARCH_FILE_BYTES); lines = decodeText(raw, false).split(/\r\n|\n|\r/); }
+        catch { skippedFiles++; continue; }
       }
-      catch { skippedFiles++; continue; }
-      const lines = content.split(/\r\n|\n|\r/);
       for (const [index, line] of lines.entries()) {
         if (!queries.some(q => line.includes(q))) continue;
         if (matchedLines++ < offset) continue;
@@ -469,16 +629,181 @@ export class WorkspaceService {
           .map((text, i) => ({ line: Math.max(0, index - contextLines) + i + 1, ...snippet(text) })) : undefined;
         const outputPath = this.outputPath(current);
         matches.push({ path: outputPath, line: index + 1, ...snippet(line), ...(context ? { context } : {}) });
-        sourceBytes.set(outputPath, raw);
+        if (raw) sourceBytes.set(outputPath, raw); else if (!uncaptured.includes(outputPath)) uncaptured.push(outputPath);
       }
     }
     checkSignal(signal);
     const scanLimited = omittedEntries || queue.length > 0 && !hasMore || hasMore && offset === 10000;
     const result = { query, matches, filesScanned, skippedFiles, scanLimited, ignoreRules: inventory ? 'git' : 'builtin',
       nextOffset: hasMore && offset < 10000 ? offset + matches.length : null,
-      truncated: hasMore || scanLimited || skippedFiles > 0 };
+      truncated: hasMore || scanLimited || skippedFiles > 0 || partialFiles > 0,
+      ...(partialFiles ? { partialFiles, partialPaths } : {}), ...(uncaptured.length ? { uncaptured } : {}) };
     this.sourceByResult.set(result, sourceBytes);
     return result;
+  }
+
+  /**
+   * Regex search over the same file universe as `search` (Git-aware, secrets and build output excluded).
+   * Hits are ranked (definitions and whole-word matches first, then spread across files). Large files are
+   * scanned up to a byte budget and reported; nothing is skipped silently.
+   */
+  async grep(options: GrepOptions, signal: AbortSignal = AbortSignal.timeout(15000)) {
+    const mode = options.mode ?? 'content';
+    const contextLines = options.contextLines ?? 0;
+    const topK = options.topK ?? 20;
+    if (typeof options.pattern !== 'string' || !['content', 'files', 'count'].includes(mode)
+      || !Number.isSafeInteger(contextLines) || contextLines < 0 || contextLines > 3
+      || !Number.isSafeInteger(topK) || topK < 1 || topK > 50 || (options.glob !== undefined && (typeof options.glob !== 'string' || !options.glob)))
+      throw new WorkspaceError('INVALID_REQUEST', 'Invalid grep request');
+    let regex: RegExp;
+    let wanted: ((path: string) => boolean) | undefined;
+    try {
+      regex = compileSafeRegex(options.pattern, options.ignoreCase === true);
+      if (regex.test('')) throw new UnsafePatternError('Pattern matches the empty string');
+      wanted = options.glob ? globMatcher(options.glob) : undefined;
+    } catch (error) {
+      if (error instanceof UnsafePatternError) throw new WorkspaceError('INVALID_REQUEST', error.message);
+      throw error;
+    }
+    checkSignal(signal);
+    const deadline = Date.now() + GREP_DEADLINE_MS;
+    const start = await this.resolvePath(options.path ?? '.');
+    const walk = await this.collectFiles(start, signal, wanted);
+    type Hit = GrepHit & { shortened?: boolean; context?: Array<{ line: number; text: string }> };
+    const hits: Hit[] = [];
+    const perFile = new Map<string, { count: number; tier: number }>();
+    const retained = new Map<string, Buffer>();
+    const uncaptured = new Set<string>();
+    const partialPaths: string[] = [];
+    const failedPaths: string[] = [];
+    let retainedBytes = 0, totalMatches = 0, filesScanned = 0, skippedFiles = 0, partialFiles = 0, longLines = 0;
+    let timedOut = false, capped = false, largeBudget = TOTAL_LARGE_SCAN_BYTES;
+    const clip = (text: string, around = 0) => {
+      const begin = Math.max(0, around - 80);
+      return { text: text.slice(begin, begin + 240), shortened: begin > 0 || text.length > begin + 240 };
+    };
+    for (const file of walk.files) {
+      checkSignal(signal);
+      if (Date.now() > deadline) { timedOut = true; break; }
+      const output = this.outputPath(file);
+      let lines: string[];
+      let raw: Buffer | undefined;
+      try {
+        const info = await stat(file);
+        if (info.size > MAX_SEARCH_FILE_BYTES) {
+          if (largeBudget <= 0) { skippedFiles++; if (failedPaths.length < 5) failedPaths.push(`${output} (scan budget)`); continue; }
+          lines = [];
+          const stats = await streamWorkspaceLines(this.root, file, signal, line => { lines.push(line); }, Math.min(LARGE_FILE_SCAN_BYTES, largeBudget));
+          largeBudget -= stats.bytes;
+          uncaptured.add(output);
+          if (!stats.complete) { partialFiles++; if (partialPaths.length < 5) partialPaths.push(output); }
+        } else {
+          raw = await safeWorkspaceBytes(this.root, file, signal, MAX_SEARCH_FILE_BYTES);
+          lines = decodeText(raw, false).split(/\r\n|\n|\r/);
+        }
+      } catch (error) {
+        if (error instanceof WorkspaceError && (error.code === 'CANCELLED' || error.code === 'TIMEOUT')) throw error;
+        skippedFiles++; if (failedPaths.length < 5) failedPaths.push(output);
+        continue;
+      }
+      filesScanned++;
+      let fileHits = 0;
+      for (let index = 0; index < lines.length; index++) {
+        if ((index & 1023) === 0 && Date.now() > deadline) { timedOut = true; break; }
+        const full = lines[index]!;
+        if (full.length > MAX_GREP_LINE) longLines++;
+        const line = full.length > MAX_GREP_LINE ? full.slice(0, MAX_GREP_LINE) : full;
+        const match = regex.exec(line);
+        if (!match) continue;
+        totalMatches++; fileHits++;
+        if (hits.length >= MAX_GREP_HITS) { capped = true; continue; }
+        const kind = classifyHit(line, match.index, match[0].length);
+        const shown = clip(line, match.index);
+        const context = contextLines && mode === 'content'
+          ? lines.slice(Math.max(0, index - contextLines), index + contextLines + 1)
+            .map((text, i) => ({ line: Math.max(0, index - contextLines) + i + 1, text: clip(text).text })) : undefined;
+        hits.push({ path: output, line: index + 1, text: shown.text, column: match.index + 1, length: match[0].length, ...kind,
+          ...(shown.shortened ? { shortened: true } : {}), ...(context ? { context } : {}) });
+        const entry = perFile.get(output) ?? { count: 0, tier: 0 };
+        entry.tier = Math.max(entry.tier, kind.tier);
+        perFile.set(output, entry);
+      }
+      if (fileHits) {
+        const entry = perFile.get(output) ?? { count: 0, tier: 0 };
+        entry.count = fileHits; perFile.set(output, entry);
+        if (raw && retainedBytes + raw.length <= 16 * 1024 * 1024) { retained.set(output, raw); retainedBytes += raw.length; }
+      }
+      if (timedOut) break;
+    }
+    checkSignal(signal);
+    const files = [...perFile.entries()].map(([path, entry]) => ({ path, count: entry.count, tier: entry.tier }))
+      .sort((a, b) => mode === 'count' ? b.count - a.count || (a.path < b.path ? -1 : 1)
+        : b.tier - a.tier || b.count - a.count || (a.path < b.path ? -1 : 1));
+    const ranked = mode === 'content' ? rankHits(hits).slice(0, topK) : [];
+    const shownFiles = mode === 'content' ? [...new Set(ranked.map(hit => hit.path))] : files.slice(0, topK).map(file => file.path);
+    const sourceBytes = new Map<string, Buffer>();
+    for (const path of shownFiles) {
+      if (uncaptured.has(path)) continue;
+      let bytes = retained.get(path);
+      if (!bytes) {
+        try { bytes = await safeWorkspaceBytes(this.root, resolve(this.root, path), signal, MAX_SEARCH_FILE_BYTES); }
+        catch (error) { if (error instanceof WorkspaceError && (error.code === 'CANCELLED' || error.code === 'TIMEOUT')) throw error; }
+      }
+      if (bytes) sourceBytes.set(path, bytes);
+    }
+    const scanLimited = walk.scanLimited || timedOut;
+    const result = { op: 'grep' as const, pattern: options.pattern, mode, topK,
+      matches: ranked.map(({ path, line, text, definition, exactWord, shortened, context }) =>
+        ({ path, line, text, ...(definition ? { definition: true } : {}), ...(exactWord ? { exactWord: true } : {}),
+          ...(shortened ? { shortened: true } : {}), ...(context ? { context } : {}) })),
+      files: files.slice(0, topK).map(({ path, count }) => ({ path, count })),
+      totalMatches, filesMatched: perFile.size, filesScanned, skippedFiles, partialFiles, partialPaths, failedPaths, longLines,
+      scanLimited, timedOut, capped, ignoreRules: walk.ignoreRules,
+      truncated: scanLimited || capped || skippedFiles > 0 || partialFiles > 0 || walk.skippedEntries > 0 || (mode === 'content' ? totalMatches > ranked.length : perFile.size > topK),
+      ...(uncaptured.size && shownFiles.some(path => uncaptured.has(path)) ? { uncaptured: shownFiles.filter(path => uncaptured.has(path)) } : {}) };
+    this.sourceByResult.set(result, sourceBytes);
+    return result;
+  }
+
+  /** Breadth-first file universe shared with search semantics: Git inventory when available, fixed exclusions always. */
+  private async collectFiles(start: string, signal: AbortSignal, wanted?: (path: string) => boolean) {
+    const info = await stat(start);
+    if (info.isFile()) return { files: [start], scanLimited: false, skippedEntries: 0, ignoreRules: 'builtin' as const };
+    const inventory = await this.gitSearchInventory(signal);
+    const allowed = inventory ? new Set(inventory) : undefined;
+    const directories = new Set<string>();
+    for (const file of inventory ?? []) {
+      let directory = dirname(file).replaceAll('\\', '/');
+      while (directory !== '.') { directories.add(directory); directory = dirname(directory).replaceAll('\\', '/'); }
+    }
+    const queue = [start];
+    const files: string[] = [];
+    let visited = 0, skippedEntries = 0, omitted = false;
+    while (queue.length && files.length < MAX_SEARCH_FILES && visited < 4000) {
+      checkSignal(signal);
+      visited++;
+      const current = queue.shift()!;
+      let entry;
+      try {
+        // Recheck descendants: a directory can be replaced by a symlink after enumeration.
+        await this.resolvePath(this.outputPath(current));
+        entry = await stat(current);
+      } catch { skippedEntries++; continue; }
+      if (entry.isDirectory()) {
+        let children;
+        try { children = (await readdir(current, { withFileTypes: true }))
+          .filter(child => !excludedName(child.name) && !child.isSymbolicLink()
+            && (!allowed || (child.isDirectory() ? directories : allowed).has(this.outputPath(join(current, child.name)))))
+          .sort((a, b) => a.name.localeCompare(b.name)); }
+        catch { skippedEntries++; continue; }
+        const room = Math.max(0, MAX_SEARCH_FILES - queue.length);
+        if (children.length > room) omitted = true;
+        for (const child of children.slice(0, room)) queue.push(join(current, child.name));
+        continue;
+      }
+      if (entry.isFile() && (!wanted || wanted(this.outputPath(current)))) files.push(current);
+    }
+    return { files, scanLimited: omitted || queue.length > 0, skippedEntries, ignoreRules: (inventory ? 'git' : 'builtin') as 'git' | 'builtin' };
   }
 
   private async gitSearchInventory(signal: AbortSignal, trackedOnly = false, scope = '.'): Promise<string[] | null> {

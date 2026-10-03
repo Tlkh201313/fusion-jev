@@ -28,10 +28,23 @@ If `/c` is rewritten into a path, edit the saved entry to `"command": "cmd"` and
 ## What it adds
 
 - The MCP server, launched as `npx -y fusion-jev@<version> stdio` (pinned to this plugin's version), with `FUSION_MCP_PROFILE=assist` (tools: `fusion_inspect`, `fusion_assist`, `fusion_evidence`) and `FUSION_WORKSPACE_ROOT` set to the current project.
-- A SessionStart hook that supplies a short usage hint.
+- A SessionStart hook that supplies a short usage hint (about 500 characters).
+- A PreToolUse hook (`scripts/pretool.cjs`) for `Read`, `Grep` and `Bash`; see below.
 - The `/fusion-jev:assist` skill with focused instructions for the tools.
 
 The plugin does not rewrite commands, permissions, or unrelated skills, hooks, instruction files and plugins. Claude keeps reasoning, edits, command authorization and correctness decisions.
+
+## Hooks
+
+The PreToolUse hook only steers; it never allows, asks for or changes permissions, and never rewrites a command.
+
+- `Read`: a whole-file read (no `offset`/`limit`) of a file inside the project that exceeds 400 lines or 20 KB is denied once per file per session, with a short pointer to `fusion_inspect` `outline`, then `symbol` or a ranged `read`. Repeating the same Read is allowed. It is not denied when the transcript already shows an `outline` of that file, and images, PDFs and notebooks are never denied. Override the thresholds with `FUSION_READ_LINES` and `FUSION_READ_BYTES`.
+- `Grep`: content searches with no `head_limit`, or very broad patterns, get a note suggesting the bounded `fusion_inspect` `grep` (at most 3 notes per session).
+- `Bash`: common noisy commands (test, build, lint, `tsc`, `git log -p`, an unscoped `git diff`) not already run through `fusion-jev` get a note with the wrapped form (at most 3 per session).
+
+Any error, timeout or unrecognized input exits silently with no effect. Per-session state is a small file in the OS temp directory. To opt out, set `FUSION_HOOKS=off` (also disables the SessionStart hint) or disable the plugin's hooks.
+
+Codex has no equivalent hook mechanism, so the Codex plugin ships only its instruction text; nothing steers Codex tool calls.
 
 ## Running commands through Fusion
 

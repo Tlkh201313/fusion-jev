@@ -3,7 +3,7 @@ name: assist
 description: Use when a command's output will be long or noisy (tests, builds, lint, installs, logs), when reading or searching several files at once, for Git history or blame evidence, for finding a repository's checks, or to expand a Fusion receipt.
 ---
 
-Use `fusion_inspect` for known reads and searches; batch up to eight independent operations. For an uncertain routine task, give `fusion_assist` a short goal and scope. Jev selects prebuilt IDs; it cannot generate code or executable arguments.
+Use `fusion_inspect` for big files (`outline`, then `symbol` or a ranged `read`), bounded `grep` (set `topK`), `list`, `search` and `git_*`; batch up to eight independent operations. Use native tools for a single small read. For an uncertain routine task, give `fusion_assist` a short goal and scope. Jev selects prebuilt IDs; it cannot generate code or executable arguments.
 
 Run the exact command Claude has chosen through its existing Bash tool as `fusion-jev run -- program argv...` if the CLI is installed globally, else the pinned `npx -y fusion-jev@0.3.0 run -- program argv...`. Host permissions still apply. Review discovered recipes and revalidate their source hash before execution; manifest scripts are untrusted. Use `--raw` for small exact output. In PowerShell, quote the separator as `'--'`.
 

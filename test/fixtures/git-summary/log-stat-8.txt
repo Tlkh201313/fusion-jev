@@ -1,0 +1,174 @@
+commit fc9421970171a0e430b13f501f1e9d09c4dc7488
+Author: Your Name <you@example.com>
+Date:   Sat Oct 3 01:24:38 2026 +0100
+
+    Match the package smoke check to the current Codex default prompt
+    
+    Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+ scripts/package-smoke.mjs | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+commit 193bc64490065d588a199010ccae3691019d114d
+Author: Your Name <you@example.com>
+Date:   Sat Oct 3 01:13:52 2026 +0100
+
+    Pass small output through, cut run overhead, and fix diagnostics from the first raw-vs-Fusion benchmark
+    
+    - run: output up to 1 KiB prints verbatim with one status line and no receipt; larger
+      results print only non-default flags and one recover line per hidden channel
+    - run: capture in memory before opening the private store, lazy-load server, SQLite and
+      workspace modules, and stop process-tree snapshots from holding the CLI open
+    - diagnostics: per-test diagnostics for the Node 24 node:test spec reporter; ignore
+      unified-diff hunks and git log message bodies (no false errors from git log -p)
+    - overview: package.json bin/main/exports entry points lead the map; wide dependency
+      rows are capped under a tight budget; outlines list exported declarations first
+    - benchmark: raw-vs-fusion script and first recorded results (2026-10-02)
+    - docs, README sample output, before/after graphic and CHANGELOG updated
+    
+    Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+ CHANGELOG.md                                       |  14 +-
+ README.md                                          |  27 +-
+ benchmark/raw-vs-fusion.mjs                        | 204 +++++++++
+ benchmark/real-host.md                             |   2 +
+ .../2026-10-02-offline-benchmark-support.json      | 175 ++++++++
+ .../2026-10-02-offline-benchmark-workflows.json    | 234 ++++++++++
+ .../2026-10-02-offline-benchmark-workspace.json    |  30 ++
+ .../results/2026-10-02-offline-benchmark.json      |  51 +++
+ benchmark/results/2026-10-02-raw-vs-fusion.csv     |  12 +
+ benchmark/results/2026-10-02-raw-vs-fusion.json    | 477 +++++++++++++++++++++
+ benchmark/results/2026-10-02-raw-vs-fusion.md      |  70 +++
+ docs/assets/before-after.svg                       |  14 +-
+ docs/comparison.md                                 |   2 +-
+ docs/faq.md                                        |   4 +-
+ docs/how-it-works.md                               |   4 +-
+ docs/install.md                                    |   2 +-
+ src/cli.ts                                         | 157 +++++--
+ src/command-summary.ts                             |  16 +-
+ src/diagnostics.ts                                 |  53 ++-
+ src/evidence.ts                                    |  13 +-
+ src/mcp.ts                                         |  35 +-
+ src/overview.ts                                    |  58 +++
+ src/run.ts                                         |  68 ++-
+ test/diagnostics-parsing.test.ts                   | 114 +++++
+ test/first-result.test.ts                          |   3 +-
+ test/overview-entry-points.test.ts                 |  79 ++++
+ test/reliability.test.ts                           |   7 +-
+ test/run-compact.test.ts                           |  97 +++++
+ test/run.test.ts                                   |  15 +-
+ 29 files changed, 1905 insertions(+), 132 deletions(-)
+
+commit 1677e6df0dd39ba500dfed37299c7ca961a9538f
+Author: Your Name <you@example.com>
+Date:   Fri Oct 2 21:01:17 2026 +0100
+
+    Add README graphics and pin npx setup commands outside the npx cache
+    
+    - docs/assets: hero banner, before/after fixture comparison and how-it-works diagram, embedded in README and docs/how-it-works.md
+    - setup run from an npx cache prints pinned npx -y fusion-jev@<version> commands instead of an ephemeral cache path, with the Windows cmd /c caveat
+    
+    Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+ README.md                    |  6 ++++
+ docs/assets/before-after.svg | 77 ++++++++++++++++++++++++++++++++++++++++++++
+ docs/assets/hero.svg         | 36 +++++++++++++++++++++
+ docs/assets/how-it-works.svg | 73 +++++++++++++++++++++++++++++++++++++++++
+ docs/how-it-works.md         |  2 ++
+ src/setup.ts                 | 21 ++++++++++--
+ test/setup.test.ts           | 34 +++++++++++++++++++
+ 7 files changed, 246 insertions(+), 3 deletions(-)
+
+commit 8a22ed429c5ae1f4836f7cae49e935e721261c1e
+Author: Your Name <you@example.com>
+Date:   Fri Oct 2 19:30:33 2026 +0100
+
+    Pin host run guidance, harden Windows evidence checks, and align Codex prompts
+    
+    - Hook, skill, MCP instructions and Codex prompts name trigger-specific uses and the
+      pinned npx -y fusion-jev@<version> run form (global fusion-jev run first)
+    - sync-version keeps the pinned guidance in step with package.json
+    - CLI recovery hint names the copy that wrote the receipt
+    - Re-check recreated files instead of skipping their ACL check
+    - Compare Windows device IDs from two handles instead of skipping on dev 0
+    - Document the fusion-local -> fusion-jev marketplace migration
+    
+    Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+ CHANGELOG.md                                       |  2 +-
+ plugin/fusion-jev-claude/scripts/session-start.cjs |  4 ++-
+ plugin/fusion-jev-claude/skills/assist/SKILL.md    |  4 +--
+ plugin/fusion-jev/.codex-plugin/plugin.json        |  4 +--
+ plugin/fusion-jev/plugin.json                      |  2 +-
+ scripts/sync-version.mjs                           | 17 ++++++++--
+ src/cli.ts                                         |  7 ++--
+ src/evidence.ts                                    | 38 +++++++++++++---------
+ src/mcp.ts                                         |  5 +--
+ src/workspace.ts                                   | 12 ++++---
+ test/first-result.test.ts                          |  2 +-
+ test/mcp.test.ts                                   |  2 +-
+ test/plugin.test.ts                                |  7 ++--
+ 13 files changed, 69 insertions(+), 37 deletions(-)
+
+commit 5dfdd2495e14590dab7412132b4f341f8df2c8fe
+Author: Your Name <you@example.com>
+Date:   Thu Oct 1 23:29:09 2026 +0100
+
+    Ignore vanished files when hardening a shared Windows evidence cache
+    
+    Concurrent stores race on each other's transient SQLite journal files.
+    hardenWindowsAcl rethrew when a file it had enumerated was deleted and
+    re-created before the attribute read, failing one of two simultaneous
+    processes with 'Could not find file'. Missing files are now skipped;
+    any other error on an existing file still fails closed.
+    
+    Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+
+ src/evidence.ts | 14 ++++++++++++--
+ 1 file changed, 12 insertions(+), 2 deletions(-)
+
+commit 7ac29140552796847fe1f8b4d4d68d94b25067cb
+Author: Your Name <you@example.com>
+Date:   Thu Oct 1 23:00:04 2026 +0100
+
+    Name the ACL failure reason and fail research process tests instead of hanging
+    
+    Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+
+ src/evidence.ts       |  5 ++++-
+ test/research.test.ts | 33 ++++++++++++++++++++++++---------
+ 2 files changed, 28 insertions(+), 10 deletions(-)
+
+commit 8dd914a8d693ff872e676ffd10f73878d17ec77e
+Author: Your Name <you@example.com>
+Date:   Thu Oct 1 23:00:03 2026 +0100
+
+    Tolerate Node 22.12 Windows stat dev=0 when verifying a workspace read
+    
+    On Node 22.12.0 for Windows, fs.promises.stat(path).dev is 0 while a file
+    handle's stat reports the volume serial, so every workspace file read was
+    rejected as 'Workspace path changed during access'. Compare dev only when
+    both values are real; inode and realpath checks are unchanged.
+    
+    Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+
+ src/workspace.ts | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+commit 8b547d1693abfa2aad8269459e67bf08ff9f51e5
+Author: Your Name <you@example.com>
+Date:   Thu Oct 1 22:24:34 2026 +0100
+
+    Accept Administrators-group ownership of private config for administrator callers
+    
+    Elevated Windows processes create files and directories owned by the
+    Administrators group (S-1-5-32-544), not their own SID, so setup and
+    doctor rejected their own private files with 'Wrong owner' (seen on the
+    GitHub windows runner). The group is already an accepted ACL principal;
+    it is now also accepted as owner when the caller is an administrator.
+    Standard users still require ownership by their own SID.
+    
+    Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+
+ src/private-config.ts | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)

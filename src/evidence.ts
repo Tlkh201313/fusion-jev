@@ -1,9 +1,9 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { spawnSync } from 'node:child_process';
-import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { createRequire } from 'node:module';
 import type Database from 'better-sqlite3';
+import { isVerifiedStorage, verifyStorageSync, type VerifiedStorage } from './acl.js';
 
 export type EvidenceSource =
   | { kind: 'workspace'; root: string; path: string }
@@ -47,108 +47,6 @@ const provenanceFileName = /^\.research-provenance-[a-f0-9]{64}\.json$/;
 const receiptId = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 interface ProvenanceRow { key: string; id: string; sha256: string; expiresAt: number }
 interface ReceiptRow { id: string; sha256: string; storedBytes: number; expiresAt: number; sequence: number }
-
-function hardenWindowsAcl(path: string, directory: boolean): boolean {
-  // .NET's ACL API replaces the whole DACL once, avoiding a window with inherited broad access.
-  const script = `
-$ErrorActionPreference = 'Stop'
-$target = $env:FUSION_EVIDENCE_ACL_PATH
-$isDirectory = $env:FUSION_EVIDENCE_ACL_DIRECTORY -eq '1'
-$mutex = [System.Threading.Mutex]::new($false, $env:FUSION_EVIDENCE_ACL_MUTEX)
-$held = $false
-try {
-if (-not $mutex.WaitOne(10000)) { throw 'Timed out waiting for evidence ACL repair' }
-$held = $true
-function Test-PrivateAcl([string]$item, [bool]$isDir) {
-  if ($isDir) { $acl = [System.IO.Directory]::GetAccessControl($item) }
-  else { $acl = [System.IO.File]::GetAccessControl($item) }
-  $current = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
-  $allowed = @($current, 'S-1-5-18', 'S-1-5-32-544')
-  $selfAllowed = $false
-  foreach ($rule in $acl.Access) {
-    if ($rule.AccessControlType -ne [System.Security.AccessControl.AccessControlType]::Allow) { continue }
-    $sid = $rule.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value
-    if ($allowed -notcontains $sid) { return $false }
-    if ($sid -eq $current) { $selfAllowed = $true }
-  }
-  return $selfAllowed
-}
-function Protect-Item([string]$item, [bool]$isDir) {
-  if ($isDir) { $acl = [System.IO.Directory]::GetAccessControl($item) }
-  else { $acl = [System.IO.File]::GetAccessControl($item) }
-  $acl.SetAccessRuleProtection($true, $false)
-  foreach ($rule in @($acl.Access)) { $acl.RemoveAccessRuleAll($rule) | Out-Null }
-  $sid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User
-  $inheritance = if ($isDir) { [System.Security.AccessControl.InheritanceFlags]::ContainerInherit -bor [System.Security.AccessControl.InheritanceFlags]::ObjectInherit }
-    else { [System.Security.AccessControl.InheritanceFlags]::None }
-  $rule = [System.Security.AccessControl.FileSystemAccessRule]::new($sid, [System.Security.AccessControl.FileSystemRights]::FullControl,
-    $inheritance, [System.Security.AccessControl.PropagationFlags]::None, [System.Security.AccessControl.AccessControlType]::Allow)
-  $acl.AddAccessRule($rule)
-  if ($isDir) { [System.IO.Directory]::SetAccessControl($item, $acl) }
-  else { [System.IO.File]::SetAccessControl($item, $acl) }
-}
-$wasTrusted = Test-PrivateAcl $target $isDirectory
-if ($isDirectory) {
-  foreach ($item in [System.IO.Directory]::EnumerateFiles($target, '*', [System.IO.SearchOption]::TopDirectoryOnly)) {
-    for ($attempt = 0; $attempt -lt 3; $attempt++) {
-      try {
-        if (([System.IO.File]::GetAttributes($item) -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) { $wasTrusted = $false }
-        elseif (-not (Test-PrivateAcl $item $false)) { $wasTrusted = $false }
-        break
-      } catch {
-        # Another process's SQLite journal files come and go: skip a file that is gone, re-check one that was recreated.
-        $inner = if ($_.Exception.InnerException) { $_.Exception.InnerException } else { $_.Exception }
-        $vanished = $inner -is [System.IO.FileNotFoundException] -or $inner -is [System.IO.DirectoryNotFoundException]
-        if (-not [System.IO.File]::Exists($item)) { break }
-        if (-not $vanished -or $attempt -ge 2) { throw }
-      }
-    }
-  }
-}
-Protect-Item $target $isDirectory
-if ($isDirectory) {
-  if (-not $wasTrusted) {
-    foreach ($item in [System.IO.Directory]::EnumerateFiles($target, '*', [System.IO.SearchOption]::TopDirectoryOnly)) {
-      $name = [System.IO.Path]::GetFileName($item)
-      if ($name -match '^(?:[a-f0-9-]{36}\.json|(?:[a-f0-9-]{36}|\.research-provenance-[a-f0-9]{64}-[a-f0-9-]{36})\.tmp|\.research-provenance-[a-f0-9]{64}\.json|research-provenance\.sqlite(?:-(?:journal|wal|shm))?)$') {
-        [System.IO.File]::Delete($item)
-      }
-    }
-  }
-  foreach ($item in [System.IO.Directory]::EnumerateFiles($target, '*', [System.IO.SearchOption]::TopDirectoryOnly)) {
-    for ($attempt = 0; $attempt -lt 3; $attempt++) {
-      try {
-        if (([System.IO.File]::GetAttributes($item) -band [System.IO.FileAttributes]::ReparsePoint) -eq 0) { Protect-Item $item $false }
-        break
-      } catch {
-        # Another process's SQLite journal files come and go: skip a file that is gone, re-protect one that was recreated.
-        $inner = if ($_.Exception.InnerException) { $_.Exception.InnerException } else { $_.Exception }
-        $vanished = $inner -is [System.IO.FileNotFoundException] -or $inner -is [System.IO.DirectoryNotFoundException]
-        if (-not [System.IO.File]::Exists($item)) { break }
-        if (-not $vanished -or $attempt -ge 2) { throw }
-      }
-    }
-  }
-}
-[Console]::Out.WriteLine($(if ($wasTrusted) { 'TRUSTED' } else { 'UNTRUSTED' }))
-} finally {
-  if ($held) { $mutex.ReleaseMutex() }
-  $mutex.Dispose()
-}
-`;
-  const powershell = join(process.env.SystemRoot ?? 'C:/Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
-  if (!isAbsolute(powershell)) throw new Error('Windows system executable path must be absolute');
-  const result = spawnSync(powershell, ['-NoProfile', '-NonInteractive', '-Command', script], {
-    windowsHide: true, encoding: 'utf8', timeout: 10_000,
-    env: { ...process.env, FUSION_EVIDENCE_ACL_PATH: path, FUSION_EVIDENCE_ACL_DIRECTORY: directory ? '1' : '0',
-      FUSION_EVIDENCE_ACL_MUTEX: `Local\\FusionEvidenceAcl-${hash(Buffer.from(path.toLowerCase())).slice(0, 32)}` },
-  });
-  if (result.status !== 0 || !/^(TRUSTED|UNTRUSTED)\s*$/.test(result.stdout)) {
-    const reason = String(result.error?.message ?? result.stderr ?? '').split(/\r?\n/, 1)[0]?.trim();
-    throw new Error('Unable to make evidence storage private' + (reason ? ` (${reason})` : ''));
-  }
-  return result.stdout.trim() === 'TRUSTED';
-}
 
 function redactKnownSecrets(input: Buffer): { bytes: Buffer; redacted: boolean } {
   // Decode with replacement for pattern detection. If nothing matches, return the untouched raw bytes.
@@ -208,25 +106,6 @@ function validDiskEntry(value: unknown, id: string): value is { receipt: Evidenc
   return disk.sourceHash === undefined && disk.canonicalPath === undefined;
 }
 
-function privateStorageDirectory(path: string): { path: string; trusted: boolean } {
-  mkdirSync(path, { recursive: true, mode: 0o700 });
-  const info = lstatSync(path);
-  if (!info.isDirectory() || info.isSymbolicLink()) throw new Error('Evidence storage requires a private non-symlink directory');
-  const actual = realpathSync.native(path);
-  let trusted = true;
-  if (process.platform === 'win32') {
-    // LOCALAPPDATA inherits the current user's Windows profile ACL; Task 2 places the CLI cache there.
-    const local = process.env.LOCALAPPDATA;
-    if (!local || !(actual.toLowerCase() === realpathSync.native(local).toLowerCase()
-      || actual.toLowerCase().startsWith(realpathSync.native(local).toLowerCase() + sep.toLowerCase())))
-      throw new Error('Evidence storage requires a private LOCALAPPDATA directory on Windows');
-    trusted = hardenWindowsAcl(actual, true);
-  } else if ((info.mode & 0o077) !== 0 || (process.getuid && info.uid !== process.getuid())) {
-    throw new Error('Evidence storage directory permissions are not private');
-  }
-  return { path: actual, trusted };
-}
-
 export class EvidenceStore {
   private readonly entries = new Map<string, Entry>();
   private readonly clock: () => number;
@@ -235,15 +114,18 @@ export class EvidenceStore {
   private readonly maxTotalBytes: number;
   private readonly removeFile: (path: string) => void;
   private nextOrder = 0;
+  private schemaReady = false;
 
-  constructor(options: { storageDir?: string; clock?: () => number; maxEntries?: number; maxTotalBytes?: number; removeFile?: (path: string) => void } = {}) {
+  constructor(options: { storageDir?: string; verifiedStorage?: VerifiedStorage; clock?: () => number; maxEntries?: number; maxTotalBytes?: number; removeFile?: (path: string) => void } = {}) {
     this.clock = options.clock ?? Date.now;
     this.maxEntries = options.maxEntries ?? 128;
     this.maxTotalBytes = options.maxTotalBytes ?? 32 * 1024 * 1024;
     this.removeFile = options.removeFile ?? (path => rmSync(path, { force: true }));
     if (!Number.isSafeInteger(this.maxEntries) || this.maxEntries < 1 || !Number.isSafeInteger(this.maxTotalBytes) || this.maxTotalBytes < 1)
       throw new RangeError('Invalid evidence capacity');
-    const storage = options.storageDir ? privateStorageDirectory(options.storageDir) : undefined;
+    if (options.verifiedStorage !== undefined && !isVerifiedStorage(options.verifiedStorage)) throw new TypeError('Unverified evidence storage');
+    // A caller that already verified the directory (asynchronously, overlapped with other work) passes the proof in.
+    const storage = options.verifiedStorage ?? (options.storageDir ? verifyStorageSync(options.storageDir) : undefined);
     this.storageDir = storage?.path;
     if (this.storageDir) {
       this.initializeDisk();
@@ -335,11 +217,15 @@ export class EvidenceStore {
     const db = openDatabase(join(this.storageDir!, 'research-provenance.sqlite'));
     try {
       db.pragma('busy_timeout = 5000');
-      db.exec('CREATE TABLE IF NOT EXISTS provenance (key TEXT PRIMARY KEY, id TEXT NOT NULL, sha256 TEXT NOT NULL, expiresAt INTEGER NOT NULL)');
-      db.exec('CREATE TABLE IF NOT EXISTS receipts (sequence INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL UNIQUE, sha256 TEXT NOT NULL, storedBytes INTEGER NOT NULL, expiresAt INTEGER NOT NULL)');
-      db.exec('CREATE TABLE IF NOT EXISTS cleanup_pending (id TEXT PRIMARY KEY, sha256 TEXT NOT NULL, storedBytes INTEGER NOT NULL, expiresAt INTEGER NOT NULL)');
-      db.exec('CREATE TABLE IF NOT EXISTS inflight (id TEXT PRIMARY KEY, sha256 TEXT NOT NULL, storedBytes INTEGER NOT NULL, expiresAt INTEGER NOT NULL)');
-      db.exec('CREATE TABLE IF NOT EXISTS cache_state (name TEXT PRIMARY KEY)');
+      // The schema is idempotent and shared by every process; one check per store is enough.
+      if (!this.schemaReady) {
+        db.exec(`CREATE TABLE IF NOT EXISTS provenance (key TEXT PRIMARY KEY, id TEXT NOT NULL, sha256 TEXT NOT NULL, expiresAt INTEGER NOT NULL);
+          CREATE TABLE IF NOT EXISTS receipts (sequence INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL UNIQUE, sha256 TEXT NOT NULL, storedBytes INTEGER NOT NULL, expiresAt INTEGER NOT NULL);
+          CREATE TABLE IF NOT EXISTS cleanup_pending (id TEXT PRIMARY KEY, sha256 TEXT NOT NULL, storedBytes INTEGER NOT NULL, expiresAt INTEGER NOT NULL);
+          CREATE TABLE IF NOT EXISTS inflight (id TEXT PRIMARY KEY, sha256 TEXT NOT NULL, storedBytes INTEGER NOT NULL, expiresAt INTEGER NOT NULL);
+          CREATE TABLE IF NOT EXISTS cache_state (name TEXT PRIMARY KEY)`);
+        this.schemaReady = true;
+      }
       return work(db);
     } finally { db.close(); }
   }

@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { makeTempDir } from './helpers/tmp.js';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -12,8 +13,7 @@ import { WorkspaceService } from '../src/workspace.js';
 
 // A shell-string continuation loses argv boundaries and interprets script names as shell syntax.
 test('discovered command continuation preserves hostile script names and cwd as structured host argv', async t => {
-  const root = await mkdtemp(join(tmpdir(), 'fusion-public-review-'));
-  t.after(() => rm(root, { recursive: true, force: true }));
+  const root = await makeTempDir(t, 'fusion-public-review-');
   const scope = 'folder with spaces & apostrophe\'s';
   const cwd = join(root, scope);
   await mkdir(cwd);
@@ -48,8 +48,7 @@ test('discovered command continuation preserves hostile script names and cwd as 
 });
 
 test('public run CLI preserves hostile argv after separator and uses child exit status', async t => {
-  const root = await mkdtemp(join(tmpdir(), 'fusion-public-run-review-'));
-  t.after(() => rm(root, { recursive: true, force: true }));
+  const root = await makeTempDir(t, 'fusion-public-run-review-');
   const cwd = join(root, 'working directory with spaces & quote\'s');
   await mkdir(cwd);
   const args = ['a b', 'a"b', '--', '--env-file=literal', '--cwd=literal', '$(Write-Output stolen)', '%PATH%', 'x&y;z|w', '雪'];

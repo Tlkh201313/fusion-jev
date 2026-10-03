@@ -4,6 +4,7 @@ import { existsSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync
 import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { EvidenceStore, type EvidenceReceipt } from './evidence.js';
+import { StorageVerification } from './acl.js';
 import { renderChannelSummary, summarizeChannel } from './command-summary.js';
 import { runCommand, type RunResult } from './run.js';
 import type { WorkspaceService } from './workspace.js';
@@ -100,7 +101,24 @@ function positiveInteger(value: string, label: string, minimum = 1): number {
   return parsed;
 }
 
-async function writeCompact(result: RunResult, memory: EvidenceStore, storageDir: string): Promise<void> {
+/** Per-channel cap for output shown verbatim when no receipt can be stored. */
+const DEGRADED_CHANNEL_LIMIT = 32 * 1024;
+
+/** The command already ran: show what it printed (bounded) and say plainly why nothing was stored. */
+function writeWithoutReceipt(result: RunResult, stdoutBytes: Buffer, stderrBytes: Buffer, error: unknown): void {
+  const reason = (error instanceof Error ? error.message : 'unknown error').replace(/\s+/g, ' ').slice(0, 300).replaceAll('"', "'");
+  const clipped = (bytes: Buffer) => bytes.length > DEGRADED_CHANNEL_LIMIT;
+  if (stderrBytes.length) process.stderr.write(stderrBytes.subarray(0, DEGRADED_CHANNEL_LIMIT));
+  if (stdoutBytes.length) process.stdout.write(stdoutBytes.subarray(0, DEGRADED_CHANNEL_LIMIT));
+  const lost = result.stdout.truncated || result.stderr.truncated || result.stdout.redacted || result.stderr.redacted;
+  process.stdout.write(`${stdoutBytes.length && stdoutBytes[stdoutBytes.length - 1] !== 10 ? '\n' : ''}termination=${result.termination} exitCode=${result.exitCode ?? 'null'}` +
+    (result.signal ? ` signal=${result.signal}` : '') + (result.errorCode ? ` errorCode=${result.errorCode}` : '') +
+    ` durationMs=${Math.round(result.durationMs)} noReceipt="${reason}; output above is verbatim` +
+    (clipped(stdoutBytes) || clipped(stderrBytes) ? `, limited to ${DEGRADED_CHANNEL_LIMIT} bytes per channel` : '') +
+    (lost ? ', captured output was already truncated or redacted' : '') + '"\n');
+}
+
+async function writeCompact(result: RunResult, memory: EvidenceStore, verification: StorageVerification): Promise<void> {
   const [stdoutBytes, stderrBytes] = [await readReceipt(memory, result.stdout), await readReceipt(memory, result.stderr)];
   const complete = (receipt: EvidenceReceipt) => !receipt.truncated && !receipt.redacted && receipt.originalBytes === receipt.storedBytes;
   if (result.termination === 'exit' && !result.cleanupFailed && complete(result.stdout) && complete(result.stderr)
@@ -113,12 +131,19 @@ async function writeCompact(result: RunResult, memory: EvidenceStore, storageDir
   }
   // Persist only channels with content into the verified-private store; empty channels need no receipt.
   let store: EvidenceStore | undefined;
-  const persist = (receipt: EvidenceReceipt, bytes: Buffer): EvidenceReceipt => {
-    if (emptyChannel(receipt)) return receipt;
-    store ??= evidenceStore(storageDir);
-    return store.capture({ source: receipt.source, bytes, originalBytes: receipt.originalBytes, truncated: receipt.truncated, redacted: receipt.redacted });
-  };
-  const stdout = persist(result.stdout, stdoutBytes), stderr = persist(result.stderr, stderrBytes);
+  let stdout = result.stdout, stderr = result.stderr;
+  try {
+    // The ACL verification started before the command ran; this waits only for whatever is left of it.
+    const opened = new EvidenceStore({ verifiedStorage: await verification.ready() });
+    const persist = (receipt: EvidenceReceipt, bytes: Buffer): EvidenceReceipt =>
+      emptyChannel(receipt) ? receipt : opened.capture({ source: receipt.source, bytes, originalBytes: receipt.originalBytes, truncated: receipt.truncated, redacted: receipt.redacted });
+    stdout = persist(result.stdout, stdoutBytes); stderr = persist(result.stderr, stderrBytes);
+    store = opened;
+  } catch (error) {
+    // Never lose the command's result because storage could not be verified or written.
+    writeWithoutReceipt(result, stdoutBytes, stderrBytes, error);
+    return;
+  }
   process.stdout.write(`termination=${result.termination} exitCode=${result.exitCode ?? 'null'}` +
     (result.signal ? ` signal=${result.signal}` : '') + (result.errorCode ? ` errorCode=${result.errorCode}` : '') +
     ` durationMs=${Math.round(result.durationMs)}${channelFields('stdout', stdout)}${channelFields('stderr', stderr)}` +
@@ -158,22 +183,27 @@ async function runCli(args: string[]): Promise<void> {
   if (!argv[0]) throw new Error('Usage: fusion-jev run [options] -- program argv...');
   // Raw output already reaches the host byte-for-byte and publishes no receipts.
   // Compact runs capture in memory first: output that is small enough to show in full
-  // needs no receipt, so the private disk store (and its Windows ACL verification) is
-  // opened only when something must stay recoverable. Every disk write still happens
-  // after that verification, exactly as before.
+  // needs no receipt. The private store's Windows ACL verification starts now, in parallel
+  // with the command, and is awaited only if a receipt turns out to be needed (otherwise it
+  // is abandoned). Every disk write still happens after that verification completes.
   const storageDir = raw ? undefined : evidenceStorageDir();
   const memory = new EvidenceStore();
+  let verification: StorageVerification | undefined;
   const controller = new AbortController();
   const cancel = () => controller.abort();
   process.once('SIGINT', cancel); process.once('SIGTERM', cancel);
   try {
-    const result = await runCommand({ argv, cwd, timeoutMs, maxCaptureBytes, raw }, memory, controller.signal);
-    if (!raw) await writeCompact(result, memory, storageDir!);
+    const running = runCommand({ argv, cwd, timeoutMs, maxCaptureBytes, raw }, memory, controller.signal);
+    // runCommand has launched the child synchronously; only now start the verification so it never delays the launch.
+    if (storageDir) verification = new StorageVerification(storageDir);
+    const result = await running;
+    if (verification) await writeCompact(result, memory, verification);
     process.exitCode = result.termination === 'exit' ? result.exitCode ?? 1 :
       result.termination === 'timeout' ? 124 : result.termination === 'cancelled' ? 130 :
       result.termination === 'spawn_error' ? 127 : 128;
   } finally {
     process.removeListener('SIGINT', cancel); process.removeListener('SIGTERM', cancel);
+    await verification?.discard();
   }
 }
 
@@ -189,7 +219,9 @@ async function evidenceCli(args: string[]): Promise<void> {
     else throw new Error(`Unknown Fusion evidence option: ${option}`);
   }
   if (maxBytes > 64 * 1024) throw new Error('max-bytes must be at most 65536');
-  const store = evidenceStore();
+  // Verification of the private cache starts now and is overlapped with building the store.
+  const verification = new StorageVerification(evidenceStorageDir());
+  const store = new EvidenceStore({ verifiedStorage: await verification.ready() });
   const page = await store.expand({ id: args[0], startByte, maxBytes });
   if (page.status !== 'ok' && page.status !== 'stale') throw new Error(`Evidence ${page.status}`);
   if (raw) {

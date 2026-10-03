@@ -59,9 +59,12 @@
     "doctor": "node --env-file-if-exists=.env dist/cli.js doctor",
     "pack:check": "npm pack --dry-run",
     "pack:smoke": "node scripts/package-smoke.mjs",
-    "check": "npm run typecheck && npm test && npm run build",
+    "check": "npm run version:check && npm run typecheck && npm test && npm run build",
     "prepack": "npm run build",
     "version": "node scripts/sync-version.mjs && git add -A server.json plugin src/mcp.ts",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "knip": "knip",
     "version:check": "node scripts/sync-version.mjs --check",
     "setup": "npm run build && node dist/cli.js setup"
   },
@@ -77,6 +80,8 @@
     "@types/better-sqlite3": "^9.6.0",
     "@types/cross-spawn": "^6.0.6",
     "@types/node": "26.6.2",
+    "knip": "^6.39.0",
+    "prettier": "^3.9.9",
     "tsx": "4.23.15",
     "typescript": "7.0.2"
   }

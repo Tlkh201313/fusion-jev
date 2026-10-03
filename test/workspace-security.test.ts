@@ -1,25 +1,18 @@
 import test, { type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
-import { access, copyFile, mkdir, mkdtemp, rename, rm, symlink, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { delimiter, dirname, isAbsolute, join } from 'node:path';
+import { access, copyFile, mkdir, rename, rm, symlink, writeFile } from 'node:fs/promises';
+import { dirname, isAbsolute, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { makeTempDir } from './helpers/tmp.js';
+import { initGitRepo } from './helpers/git.js';
+import { setEnv, setPathFirst } from './helpers/env.js';
 import { WorkspaceService } from '../src/workspace.js';
 import type { RouteRequest, RouteResult } from '../src/types.js';
 
 const noProvider = { route: async (): Promise<RouteResult> => { throw new Error('No provider calls expected'); } };
 async function fixture(t: TestContext) {
-  const root = await mkdtemp(join(tmpdir(), 'fusion-security-'));
-  t.after(() => rm(root, { recursive: true, force: true }));
-  const git = (args: string[], input?: string) => {
-    const result = spawnSync('git', args, { cwd: root, input, encoding: 'utf8', windowsHide: true });
-    assert.equal(result.status, 0, result.stderr);
-    return result.stdout.trim();
-  };
-  git(['init', '--quiet']);
-  git(['config', 'user.name', 'Security Fixture']);
-  git(['config', 'user.email', 'security@example.invalid']);
-  git(['config', 'commit.gpgsign', 'false']);
+  const root = await makeTempDir(t, 'fusion-security-');
+  const git = initGitRepo(root);
   return { root, git, service: new WorkspaceService(root, noProvider) };
 }
 async function exists(path: string): Promise<boolean> {
@@ -119,8 +112,7 @@ test('Git log never executes a repository signature verifier', async t => {
 });
 
 for (const routed of [false, true]) test(`${routed ? 'Routed' : 'Direct'} reads reject a root replaced after path resolution`, async t => {
-  const container = await mkdtemp(join(tmpdir(), 'fusion-root-binding-'));
-  t.after(() => rm(container, { recursive: true, force: true }));
+  const container = await makeTempDir(t, 'fusion-root-binding-');
   const root = join(container, 'approved'), outside = join(container, 'unapproved');
   await mkdir(root); await mkdir(outside);
   await writeFile(join(root, 'note.txt'), 'approved\n');
@@ -164,8 +156,7 @@ for (const location of ['.', 'bin']) test(`Fixed Git ignores a workspace executa
   const control = spawnSync(fake, ['-e', 'process.stdout.write("harmless-lookup-fixture")'], { encoding: 'utf8', windowsHide: true });
   assert.equal(control.status, 0);
   assert.equal(control.stdout, 'harmless-lookup-fixture', 'the repository executable can run if selected');
-  const oldPath = process.env.PATH;
-  process.env.PATH = [shadow, '.', '', oldPath ?? ''].join(delimiter);
+  const restoreEnv = setPathFirst([shadow, '.', ''], t);
   try {
     const diff = await service.git('diff');
     assert.match(diff.text, /\+trusted-git-change/);
@@ -173,7 +164,7 @@ for (const location of ['.', 'bin']) test(`Fixed Git ignores a workspace executa
     assert.ok(!diff.argv[0]!.startsWith(root), 'workspace executable is not trusted by an absolute PATH entry');
     assert.equal((await service.search('trusted-git-change')).ignoreRules, 'git');
   } finally {
-    if (oldPath === undefined) delete process.env.PATH; else process.env.PATH = oldPath;
+    restoreEnv();
   }
 });
 
@@ -200,9 +191,7 @@ for (const kind of ['root', 'nested', 'linked']) test(`Fixed Git binds ${kind} w
   git(['config', 'core.worktree', outside]);
   const scopedRoot = kind === 'root' ? workingTree : join(workingTree, 'nested');
   const service = new WorkspaceService(scopedRoot, noProvider);
-  const oldWorkTree = process.env.GIT_WORK_TREE, oldGitDir = process.env.GIT_DIR;
-  process.env.GIT_WORK_TREE = outside;
-  process.env.GIT_DIR = join(root, '.git');
+  const restoreEnv = setEnv({ GIT_WORK_TREE: outside, GIT_DIR: join(root, '.git') }, t);
   try {
     const diff = await service.git('diff');
     assert.doesNotMatch(diff.text, /PRIVATE_OUTSIDE_WORKTREE_FIXTURE/);
@@ -211,8 +200,7 @@ for (const kind of ['root', 'nested', 'linked']) test(`Fixed Git binds ${kind} w
     assert.match((await service.git('status')).text, /note\.txt/);
     assert.match((await service.git('log')).text, /fixture/);
   } finally {
-    if (oldWorkTree === undefined) delete process.env.GIT_WORK_TREE; else process.env.GIT_WORK_TREE = oldWorkTree;
-    if (oldGitDir === undefined) delete process.env.GIT_DIR; else process.env.GIT_DIR = oldGitDir;
+    restoreEnv();
   }
 });
 
@@ -221,13 +209,7 @@ test('Fixed Git summarizes submodules without following an outside working tree 
   const outside = `${root}-submodule`;
   await mkdir(outside);
   t.after(() => rm(outside, { recursive: true, force: true }));
-  const childGit = (args: string[]) => {
-    const result = spawnSync('git', args, { cwd: outside, encoding: 'utf8', windowsHide: true });
-    assert.equal(result.status, 0, result.stderr);
-    return result.stdout.trim();
-  };
-  childGit(['init', '--quiet']); childGit(['config', 'user.name', 'Security Fixture']);
-  childGit(['config', 'user.email', 'security@example.invalid']); childGit(['config', 'commit.gpgsign', 'false']);
+  const childGit = initGitRepo(outside);
   await writeFile(join(outside, 'note.txt'), 'submodule-before\n');
   childGit(['add', '.']); childGit(['commit', '-qm', 'submodule fixture']);
   const oid = childGit(['rev-parse', 'HEAD']);

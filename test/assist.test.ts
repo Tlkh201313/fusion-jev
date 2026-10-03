@@ -1,8 +1,8 @@
 import test, { type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { makeTempDir } from './helpers/tmp.js';
 import { AssistanceService } from '../src/assist.js';
 import { EvidenceStore } from '../src/evidence.js';
 import { importResearch } from '../src/research.js';
@@ -11,8 +11,7 @@ import type { RoutingService } from '../src/mcp.js';
 import type { RouteRequest, RouteResult } from '../src/types.js';
 
 async function fixture(t: TestContext, select?: (request: RouteRequest) => RouteResult) {
-  const root = await mkdtemp(join(tmpdir(), 'fusion-assist-'));
-  t.after(() => rm(root, { recursive: true, force: true }));
+  const root = await makeTempDir(t, 'fusion-assist-');
   await mkdir(join(root, 'src'));
   await writeFile(join(root, 'src', 'target.ts'), 'export const target = 1;\n');
   await writeFile(join(root, 'src', 'other.ts'), 'export const other = 2;\n');

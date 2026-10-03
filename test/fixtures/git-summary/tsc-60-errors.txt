@@ -1,0 +1,60 @@
+src/api.ts(1,14): error TS2322: Type 'string' is not assignable to type 'number'.
+src/api.ts(2,28): error TS2339: Property 'missing1' does not exist on type '{ a: number; }'.
+src/api.ts(3,20): error TS7006: Parameter 'x' implicitly has an 'any' type.
+src/api.ts(4,19): error TS2304: Cannot find name 'undefinedName3'.
+src/api.ts(5,14): error TS2322: Type 'string' is not assignable to type 'number'.
+src/api.ts(6,28): error TS2339: Property 'missing5' does not exist on type '{ a: number; }'.
+src/api.ts(7,20): error TS7006: Parameter 'x' implicitly has an 'any' type.
+src/api.ts(8,19): error TS2304: Cannot find name 'undefinedName7'.
+src/api.ts(9,14): error TS2322: Type 'string' is not assignable to type 'number'.
+src/api.ts(10,28): error TS2339: Property 'missing9' does not exist on type '{ a: number; }'.
+src/api.ts(11,21): error TS7006: Parameter 'x' implicitly has an 'any' type.
+src/api.ts(12,20): error TS2304: Cannot find name 'undefinedName11'.
+src/api.ts(13,14): error TS2322: Type 'string' is not assignable to type 'number'.
+src/api.ts(14,29): error TS2339: Property 'missing13' does not exist on type '{ a: number; }'.
+src/api.ts(15,21): error TS7006: Parameter 'x' implicitly has an 'any' type.
+src/api.ts(16,20): error TS2304: Cannot find name 'undefinedName15'.
+src/api.ts(17,14): error TS2322: Type 'string' is not assignable to type 'number'.
+src/api.ts(18,29): error TS2339: Property 'missing17' does not exist on type '{ a: number; }'.
+src/api.ts(19,21): error TS7006: Parameter 'x' implicitly has an 'any' type.
+src/api.ts(20,20): error TS2304: Cannot find name 'undefinedName19'.
+src/api.ts(21,14): error TS2322: Type 'string' is not assignable to type 'number'.
+src/api.ts(22,29): error TS2339: Property 'missing21' does not exist on type '{ a: number; }'.
+src/store.ts(1,14): error TS2322: Type 'string' is not assignable to type 'number'.
+src/store.ts(2,28): error TS2339: Property 'missing1' does not exist on type '{ a: number; }'.
+src/store.ts(3,20): error TS7006: Parameter 'x' implicitly has an 'any' type.
+src/store.ts(4,19): error TS2304: Cannot find name 'undefinedName3'.
+src/store.ts(5,14): error TS2322: Type 'string' is not assignable to type 'number'.
+src/store.ts(6,28): error TS2339: Property 'missing5' does not exist on type '{ a: number; }'.
+src/store.ts(7,20): error TS7006: Parameter 'x' implicitly has an 'any' type.
+src/store.ts(8,19): error TS2304: Cannot find name 'undefinedName7'.
+src/store.ts(9,14): error TS2322: Type 'string' is not assignable to type 'number'.
+src/store.ts(10,28): error TS2339: Property 'missing9' does not exist on type '{ a: number; }'.
+src/store.ts(11,21): error TS7006: Parameter 'x' implicitly has an 'any' type.
+src/store.ts(12,20): error TS2304: Cannot find name 'undefinedName11'.
+src/store.ts(13,14): error TS2322: Type 'string' is not assignable to type 'number'.
+src/store.ts(14,29): error TS2339: Property 'missing13' does not exist on type '{ a: number; }'.
+src/util.ts(1,14): error TS2322: Type 'string' is not assignable to type 'number'.
+src/util.ts(2,28): error TS2339: Property 'missing1' does not exist on type '{ a: number; }'.
+src/util.ts(3,20): error TS7006: Parameter 'x' implicitly has an 'any' type.
+src/util.ts(4,19): error TS2304: Cannot find name 'undefinedName3'.
+src/util.ts(5,14): error TS2322: Type 'string' is not assignable to type 'number'.
+src/util.ts(6,28): error TS2339: Property 'missing5' does not exist on type '{ a: number; }'.
+src/util.ts(7,20): error TS7006: Parameter 'x' implicitly has an 'any' type.
+src/util.ts(8,19): error TS2304: Cannot find name 'undefinedName7'.
+src/util.ts(9,14): error TS2322: Type 'string' is not assignable to type 'number'.
+src/util.ts(10,28): error TS2339: Property 'missing9' does not exist on type '{ a: number; }'.
+src/util.ts(11,21): error TS7006: Parameter 'x' implicitly has an 'any' type.
+src/util.ts(12,20): error TS2304: Cannot find name 'undefinedName11'.
+src/view.ts(1,14): error TS2322: Type 'string' is not assignable to type 'number'.
+src/view.ts(2,28): error TS2339: Property 'missing1' does not exist on type '{ a: number; }'.
+src/view.ts(3,20): error TS7006: Parameter 'x' implicitly has an 'any' type.
+src/view.ts(4,19): error TS2304: Cannot find name 'undefinedName3'.
+src/view.ts(5,14): error TS2322: Type 'string' is not assignable to type 'number'.
+src/view.ts(6,28): error TS2339: Property 'missing5' does not exist on type '{ a: number; }'.
+src/view.ts(7,20): error TS7006: Parameter 'x' implicitly has an 'any' type.
+src/view.ts(8,19): error TS2304: Cannot find name 'undefinedName7'.
+src/view.ts(9,14): error TS2322: Type 'string' is not assignable to type 'number'.
+src/view.ts(10,28): error TS2339: Property 'missing9' does not exist on type '{ a: number; }'.
+src/view.ts(11,21): error TS7006: Parameter 'x' implicitly has an 'any' type.
+src/view.ts(12,20): error TS2304: Cannot find name 'undefinedName11'.

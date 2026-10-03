@@ -1,19 +1,37 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
-import { join } from 'node:path';
+import { delimiter, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { privateFixtureHome } from './private-fixture.js';
+import { envWithPathFirst, pathKey } from './helpers/env.js';
 
 const cli = fileURLToPath(new URL('../src/cli.ts', import.meta.url));
 const tsxImport = import.meta.resolve('tsx');
 const cliArgs = (...args: string[]) => ['--import', tsxImport, cli, ...args];
 
+// The CLI prints the short recovery form only when `fusion-jev` is on PATH. Put a stand-in launcher first on PATH
+// so the compact output never depends on a globally installed package, and assert that it is the one that resolves.
+function resolveOnPath(name: string, env: NodeJS.ProcessEnv): string | undefined {
+  const exts = process.platform === 'win32' ? ['.cmd', '.exe', '.bat', ''] : [''];
+  for (const dir of (env[pathKey(env)] ?? '').split(delimiter)) {
+    if (!dir) continue;
+    for (const ext of exts) { const candidate = join(dir, name + ext); if (existsSync(candidate)) return candidate; }
+  }
+  return undefined;
+}
+
 function fixtureEnv(home: string): NodeJS.ProcessEnv {
-  return { ...process.env, LOCALAPPDATA: home, XDG_CACHE_HOME: home, FUSION_CONFIG_HOME: home,
+  const bin = join(home, 'bin');
+  mkdirSync(bin, { recursive: true });
+  const launcher = join(bin, process.platform === 'win32' ? 'fusion-jev.cmd' : 'fusion-jev');
+  writeFileSync(launcher, '');
+  const env = { ...envWithPathFirst(process.env, bin), LOCALAPPDATA: home, XDG_CACHE_HOME: home, FUSION_CONFIG_HOME: home,
     FUSION_ENV_FILE: '', TYPESAFE_API_KEY: '', JEV_API_KEY: '', TEAMOROUTER_API_KEY: '' };
+  assert.equal(resolveOnPath('fusion-jev', env), launcher, 'fake fusion-jev launcher must shadow any globally installed one');
+  return env;
 }
 
 function run(home: string, ...args: string[]) {

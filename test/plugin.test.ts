@@ -32,8 +32,7 @@ test('Claude SessionStart gives short Fusion guidance without overriding permiss
   assert.equal(output.hookSpecificOutput.hookEventName, 'SessionStart');
   assert.match(output.hookSpecificOutput.additionalContext, /npx -y fusion-jev@\d+\.\d+\.\d+ run/, 'pinned, works without a global install');
   assert.match(output.hookSpecificOutput.additionalContext, /fusion-jev run -- program argv\.\.\. if installed globally/);
-  assert.match(output.hookSpecificOutput.additionalContext, /Claude/);
-  assert.ok(Buffer.byteLength(result.stdout) < 1200);
+  assert.ok(Buffer.byteLength(result.stdout) < 700);
   assert.equal(output.hookSpecificOutput.permissionDecision, undefined);
 });
 

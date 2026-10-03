@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { makeTempDir } from './helpers/tmp.js';
+import { waitFor } from './helpers/wait.js';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -23,10 +25,7 @@ async function withDeadline<T>(pending: Promise<T>, timeoutMs: number, message: 
 }
 
 async function waitForFile(path: string): Promise<void> {
-  for (let attempt = 0; attempt < 100; attempt++) {
-    try { await readFile(path); return; } catch { await new Promise(resolve => setTimeout(resolve, 20)); }
-  }
-  throw new Error(`Fixture did not create ${path}`);
+  await waitFor(() => readFile(path).then(() => true, () => false), 2000, 20, `fixture to create ${path}`);
 }
 
 interface WindowsProcessIdentity { pid: number; startTicks: string }
@@ -72,8 +71,7 @@ test('runner caps output while counting original bytes', async () => {
 });
 
 test('runner launches a failing child exactly once', async t => {
-  const dir = await mkdtemp(join(tmpdir(), 'fusion-run-once-'));
-  t.after(() => rm(dir, { recursive: true, force: true }));
+  const dir = await makeTempDir(t, 'fusion-run-once-');
   const marker = join(dir, 'launches.txt');
   const script = 'require("node:fs").appendFileSync(process.argv[1],"x");process.exit(5)';
   const result = await runCommand({ argv: [process.execPath, '-e', script, marker] }, new EvidenceStore());
@@ -88,8 +86,7 @@ test('failed spawn is categorized without a fabricated exit code', async () => {
 });
 
 test('timeout and cancellation stop child process trees', async t => {
-  const dir = await mkdtemp(join(tmpdir(), 'fusion-run-tree-'));
-  t.after(() => rm(dir, { recursive: true, force: true }));
+  const dir = await makeTempDir(t, 'fusion-run-tree-');
   for (const mode of ['timeout', 'cancel'] as const) {
     const pidPath = join(dir, mode + '.pid');
     const script = `const fs=require('node:fs'); const {spawn}=require('node:child_process'); const child=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore'}); fs.writeFileSync(process.argv[1],String(child.pid)); setInterval(()=>{},1000)`;
@@ -189,8 +186,7 @@ test('CLI maps an absent executable to exit 127 without leaking its environment'
 });
 
 test('CLI rejects invalid Fusion options and missing separator without launching', async t => {
-  const dir = await mkdtemp(join(tmpdir(), 'fusion-run-validation-'));
-  t.after(() => rm(dir, { recursive: true, force: true }));
+  const dir = await makeTempDir(t, 'fusion-run-validation-');
   const marker = join(dir, 'launched');
   const script = `require('node:fs').writeFileSync(${JSON.stringify(marker)},'yes')`;
   for (const options of [['--unknown'], ['--timeout-ms=-1'], ['--cwd=.'], []]) {
@@ -202,8 +198,7 @@ test('CLI rejects invalid Fusion options and missing separator without launching
 });
 
 test('Windows cmd launcher with spaced path receives quoted and metacharacter arguments', { skip: process.platform !== 'win32' }, async t => {
-  const dir = await mkdtemp(join(tmpdir(), 'fusion cmd fixture '));
-  t.after(() => rm(dir, { recursive: true, force: true }));
+  const dir = await makeTempDir(t, 'fusion cmd fixture ');
   const shimDir = join(dir, 'node_modules', '.bin');
   await mkdir(shimDir, { recursive: true });
   const shim = join(shimDir, 'argv fixture.cmd');
@@ -229,8 +224,7 @@ test('Windows cmd launcher with spaced path receives quoted and metacharacter ar
 });
 
 test('Windows timeout kills pipe-holding descendant after its direct parent exits', { skip: process.platform !== 'win32' }, async t => {
-  const dir = await mkdtemp(join(tmpdir(), 'fusion-run-orphan-'));
-  t.after(() => rm(dir, { recursive: true, force: true }));
+  const dir = await makeTempDir(t, 'fusion-run-orphan-');
   const pidPath = join(dir, 'descendant.pid');
   const marker = join(dir, 'survived.txt');
   const parentExitPath = join(dir, 'parent-exited.txt');
@@ -265,8 +259,7 @@ test('Windows timeout kills pipe-holding descendant after its direct parent exit
 });
 
 test('Windows cleanup failure returns bounded incomplete receipts instead of hanging', { skip: process.platform !== 'win32' }, async t => {
-  const dir = await mkdtemp(join(tmpdir(), 'fusion-run-cleanup-failure-'));
-  t.after(() => rm(dir, { recursive: true, force: true }));
+  const dir = await makeTempDir(t, 'fusion-run-cleanup-failure-');
   const pidPath = join(dir, 'child.pid');
   const originalSystemRoot = process.env.SystemRoot;
   let childPid: number | undefined;
@@ -290,8 +283,7 @@ test('Windows cleanup failure returns bounded incomplete receipts instead of han
 });
 
 test('Windows rapid parent exit without a proven identity fails closed', { skip: process.platform !== 'win32' }, async t => {
-  const dir = await mkdtemp(join(tmpdir(), 'fusion-run-unproven-root-'));
-  t.after(() => rm(dir, { recursive: true, force: true }));
+  const dir = await makeTempDir(t, 'fusion-run-unproven-root-');
   const pidPath = join(dir, 'descendant.pid');
   const parent = 'const fs=require("node:fs");const child=require("node:child_process").spawn(process.execPath,["-e","setInterval(()=>{},1000)"],{stdio:["ignore","inherit","inherit"],detached:true});fs.writeFileSync(process.argv[1],String(child.pid));child.unref()';
   let descendantPid: number | undefined;
@@ -383,8 +375,7 @@ test('Windows root trust uses public ChildProcess lifecycle without a private ha
 });
 
 test('Windows cleanup refuses a reused PID with a different creation identity', { skip: process.platform !== 'win32' }, async t => {
-  const dir = await mkdtemp(join(tmpdir(), 'fusion-run-pid-reuse-'));
-  t.after(() => rm(dir, { recursive: true, force: true }));
+  const dir = await makeTempDir(t, 'fusion-run-pid-reuse-');
   const marker = join(dir, 'unrelated-survived.txt');
   const unrelated = spawn(process.execPath, ['-e', 'setTimeout(()=>require("node:fs").writeFileSync(process.argv[1],"alive"),500);setInterval(()=>{},1000)', marker], { stdio: 'ignore' });
   try {
@@ -392,7 +383,8 @@ test('Windows cleanup refuses a reused PID with a different creation identity', 
     assert.equal(typeof module.terminateWindowsTree, 'function');
     const killed = await module.terminateWindowsTree!([{ pid: unrelated.pid!, startTicks: '0' }]);
     assert.equal(killed, false);
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    // The unrelated process writes its marker after ~500 ms only if it survived; wait for that event instead of a fixed sleep.
+    await waitFor(async () => readFile(marker, 'utf8').then(text => text === 'alive', () => false), 15000, 20, 'unrelated process to write its survival marker');
     assert.equal(await readFile(marker, 'utf8'), 'alive');
   } finally {
     if (unrelated.pid) spawnSync('taskkill', ['/PID', String(unrelated.pid), '/T', '/F'], { stdio: 'ignore' });
@@ -407,8 +399,7 @@ test('Windows snapshot records an exact identity while the root is alive', { ski
 });
 
 test('Windows snapshot records descendant identity under a live root', { skip: process.platform !== 'win32' }, async t => {
-  const dir = await mkdtemp(join(tmpdir(), 'fusion-run-tree-snapshot-'));
-  t.after(() => rm(dir, { recursive: true, force: true }));
+  const dir = await makeTempDir(t, 'fusion-run-tree-snapshot-');
   const pidPath = join(dir, 'descendant.pid');
   const script = 'const fs=require("node:fs");const child=require("node:child_process").spawn(process.execPath,["-e","setInterval(()=>{},1000)"],{stdio:"ignore",detached:true});fs.writeFileSync(process.argv[1],String(child.pid));child.unref();setInterval(()=>{},1000)';
   const parent = spawn(process.execPath, ['-e', script, pidPath], { stdio: 'ignore' });
@@ -464,8 +455,7 @@ test('Windows cleanup terminates every recorded identity in a tree', { skip: pro
 });
 
 test('POSIX executable script with a spaced path receives metacharacter argv', { skip: process.platform === 'win32' }, async t => {
-  const dir = await mkdtemp(join(tmpdir(), 'fusion script fixture '));
-  t.after(() => rm(dir, { recursive: true, force: true }));
+  const dir = await makeTempDir(t, 'fusion script fixture ');
   const script = join(dir, 'argv fixture');
   await writeFile(script, '#!/bin/sh\nprintf "%s\\n" "$@"\n', { mode: 0o755 });
   const args = ['a b', 'x&y', 'q|r', '雪'];

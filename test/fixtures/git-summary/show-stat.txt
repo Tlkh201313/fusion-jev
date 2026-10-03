@@ -1,0 +1,10 @@
+commit fc9421970171a0e430b13f501f1e9d09c4dc7488
+Author: Your Name <you@example.com>
+Date:   Sat Oct 3 01:24:38 2026 +0100
+
+    Match the package smoke check to the current Codex default prompt
+    
+    Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+ scripts/package-smoke.mjs | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
