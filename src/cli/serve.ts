@@ -7,7 +7,10 @@ import { evidenceStorageDir } from './storage.js';
 
 const COMMANDS = ['stdio', 'http', 'doctor', 'config'];
 
-function configuredWorkspaceRoots(): { defaultRoot: string; allowedRoots: Set<string> } {
+function configuredWorkspaceRoots(): { defaultRoot: string; allowedRoots: Set<string>; access: 'host' | 'restricted' } {
+  const access = process.env.FUSION_WORKSPACE_ACCESS || 'host';
+  if (access !== 'host' && access !== 'restricted')
+    throw new Error('FUSION_WORKSPACE_ACCESS must be host or restricted');
   const defaultRoot = process.env.FUSION_WORKSPACE_ROOT || process.cwd();
   const requestedRoots = [
     defaultRoot,
@@ -27,7 +30,7 @@ function configuredWorkspaceRoots(): { defaultRoot: string; allowedRoots: Set<st
       }
     }),
   );
-  return { defaultRoot, allowedRoots };
+  return { defaultRoot, allowedRoots, access };
 }
 
 /** `stdio` (default), `http`, `doctor [stdio|http]` and its alias `config doctor [stdio|http]`. */
@@ -99,7 +102,7 @@ export async function serveCli(args: string[]): Promise<void> {
   const router = new FusionRouter({ config, jev: config.jev.apiKey ? new JevProvider(config.jev) : undefined });
   const controller = new AbortController();
   if (command === 'stdio') {
-    const { defaultRoot, allowedRoots } = configuredWorkspaceRoots();
+    const { defaultRoot, allowedRoots, access } = configuredWorkspaceRoots();
     const workspaces = new Map<string, WorkspaceService>();
     const server = await startStdioServer({
       router,
@@ -119,7 +122,7 @@ export async function serveCli(args: string[]): Promise<void> {
           return cached;
         }
         const service = new Workspace(key, router);
-        if (!allowedRoots.has(service.root))
+        if (access === 'restricted' && !allowedRoots.has(service.root))
           throw new WorkspaceError('INVALID_PATH', 'Workspace root is not approved for this server');
         workspaces.set(key, service);
         if (workspaces.size > 16) workspaces.delete(workspaces.keys().next().value!);

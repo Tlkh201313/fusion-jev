@@ -71,10 +71,10 @@ try {
   run([npmCli, 'install', '--prefix', consumer, '--omit=dev', '--no-audit', '--no-fund', join(root, packed.filename)]);
   const pluginRoot = join(consumer, 'node_modules', 'fusion-jev', 'plugin', 'fusion-jev');
   const manifest = JSON.parse(await readFile(join(pluginRoot, '.codex-plugin', 'plugin.json'), 'utf8'));
-  assert.equal(manifest.skills, undefined, 'Routine MCP use must not load a bundled skill file');
+  assert.equal(manifest.skills, './skills/');
   assert.match(manifest.interface.defaultPrompt.join(' '), /Fusion.*fusion_inspect/i);
-  assert.match(manifest.interface.defaultPrompt.join(' '), /RTK/);
-  assert.ok(!paths.some((path) => path.startsWith('plugin/fusion-jev/skills/')));
+  assert.match(manifest.interface.defaultPrompt.join(' '), /native tools only when Fusion is unavailable, unsupported or explicitly fails/);
+  assert.ok(paths.includes('plugin/fusion-jev/skills/assist/SKILL.md'));
   for (const field of ['composerIcon', 'logo', 'logoDark']) {
     const icon = await readFile(join(pluginRoot, manifest.interface[field]));
     assert.equal(icon.subarray(1, 4).toString(), 'PNG');

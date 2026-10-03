@@ -5,7 +5,7 @@ import type { FusionConfig } from '../types.js';
 const S = { type: 'string' },
   I = { type: 'integer' },
   B = { type: 'boolean' };
-const slimRoot = { root: { ...S, description: 'Approved absolute root' } };
+const slimRoot = { root: { ...S, description: 'Host-selected absolute root' } };
 export const slimTools: Record<
   string,
   { description: string; inputSchema: Record<string, unknown>; annotations: Record<string, boolean> }

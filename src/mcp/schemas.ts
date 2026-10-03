@@ -35,7 +35,7 @@ const rootField = {
     .min(1)
     .max(4096)
     .optional()
-    .describe('Exact approved absolute workspace root. Use path to select a subdirectory.'),
+    .describe('Absolute workspace root selected by the host. Use path to select a subdirectory.'),
 };
 const formatField = {
   format: z

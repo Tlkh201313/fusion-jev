@@ -290,6 +290,7 @@ test('stdio workspace roots are limited to the configured root allowlist', async
       FUSION_MCP_PROFILE: 'full',
       FUSION_WORKSPACE_ROOT: projectRoot,
       FUSION_WORKSPACE_ALLOWED_ROOTS: allowed,
+      FUSION_WORKSPACE_ACCESS: 'restricted',
     },
     stderr: 'pipe',
   });

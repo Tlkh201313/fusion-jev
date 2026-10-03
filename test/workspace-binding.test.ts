@@ -23,6 +23,7 @@ async function connect(cwd: string, env: Record<string, string>) {
       TYPESAFE_API_KEY: '',
       FUSION_FALLBACK: 'host',
       FUSION_WORKSPACE_ALLOWED_ROOTS: '',
+      FUSION_WORKSPACE_ACCESS: 'restricted',
       ...env,
     },
     stderr: 'pipe',
@@ -40,6 +41,40 @@ async function inspect(client: Client, root?: string) {
     },
   });
 }
+
+test('local host calls can read another project without approving each root', async (t) => {
+  const base = await mkdtemp(join(tmpdir(), 'fusion-host-roots-'));
+  t.after(() => rm(base, { recursive: true, force: true }));
+  const launcher = join(base, 'launcher'),
+    project = join(base, 'project');
+  await mkdir(launcher);
+  await mkdir(project);
+  await mkdir(join(project, 'nested'));
+  await writeFile(join(project, 'note.txt'), 'automatic project access');
+  await writeFile(join(project, 'nested', 'note.txt'), 'automatic nested access');
+  const client = await connect(launcher, { FUSION_WORKSPACE_ACCESS: '' });
+  try {
+    for (const root of [project, join(project, 'nested')]) {
+      const result = await inspect(client, root);
+      assert.equal(result.isError, undefined);
+      assert.deepEqual((result.structuredContent as any).failed, []);
+      assert.match((result.content as any)[0].text, /automatic/);
+    }
+    const relative = await inspect(client, '../project');
+    assert.equal(relative.isError, true);
+    const escape = await client.callTool({
+      name: 'fusion_inspect',
+      arguments: {
+        root: launcher,
+        requests: [{ action: 'read', path: '../project/note.txt' }],
+      },
+    });
+    assert.equal((escape.structuredContent as any).failed.length, 1);
+    assert.doesNotMatch(JSON.stringify(escape), /automatic project access/);
+  } finally {
+    await client.close();
+  }
+});
 
 test('Claude adapter binds each session to its project even when the launcher cwd differs', async (t) => {
   const base = await mkdtemp(join(tmpdir(), 'fusion-project-binding-'));

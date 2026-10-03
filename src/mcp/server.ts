@@ -154,12 +154,12 @@ export function createFusionMcpServer(options: McpOptions, requestSignal?: () =>
   const workspaceHint = workspace
     ? 'This server has a fixed workspace; omit root.'
     : workspaceFactory
-      ? 'Pass an approved absolute root (FUSION_WORKSPACE_ROOT/ALLOWED_ROOTS); path selects subdirectories.'
+      ? "Pass the active project's absolute root; local stdio accepts host-selected roots by default. Restricted mode uses configured roots. Use path for subdirectories."
       : '';
-  const serverInfo = { name: 'fusion-jev', title: 'Fusion Jev', version: '0.3.0' };
+  const serverInfo = { name: 'fusion-jev', title: 'Fusion Jev', version: '0.3.1' };
   const server = new McpServer(serverInfo, {
     instructions:
-      `Fusion inspection tools: assist (short repo tasks), inspect (batched read/outline/symbol/grep/git), evidence (expand receipts). Run noisy commands via fusion-jev run -- cmd args (else npx -y fusion-jev@${serverInfo.version} run -- ...; --raw for small exact output; quote '--' in PowerShell). Host owns reasoning, edits, approvals. RTK/native are fallback. ${hasWorkspace ? workspaceHint : 'No workspace is exposed.'}`.trim(),
+      `Use Fusion inspection first for every supported read/list/search/Git check, command and minor repo task, even small reads. fusion_inspect: known ops; fusion_assist: uncertain tasks; fusion_evidence: receipts. Jev picks validated IDs; no extra Jev approval. Run fusion-jev run -- program argv... if installed globally, else npx -y fusion-jev@${serverInfo.version} run -- program argv... (--raw for short output; PowerShell: '--'). Host reasons, edits and verifies. RTK/native tools only on failure/unsupported work. ${hasWorkspace ? workspaceHint : 'No workspace is exposed.'}`.trim(),
   });
   const specs = createToolSpecs(config);
   registerTools(server, ctx, specs, hasWorkspace);

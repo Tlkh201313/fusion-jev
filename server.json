@@ -8,17 +8,15 @@
     "source": "github"
   },
   "websiteUrl": "https://github.com/Tlkh201313/fusion-jev#readme",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "fusion-jev",
-      "version": "0.3.0",
+      "version": "0.3.1",
       "runtimeHint": "npx",
       "transport": { "type": "stdio" },
-      "packageArguments": [
-        { "type": "positional", "value": "stdio" }
-      ],
+      "packageArguments": [{ "type": "positional", "value": "stdio" }],
       "environmentVariables": [
         {
           "name": "TYPESAFE_API_KEY",

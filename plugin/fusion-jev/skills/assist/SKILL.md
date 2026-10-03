@@ -5,7 +5,7 @@ description: Use Fusion first for every supported file read, directory listing, 
 
 Use Fusion throughout repository work. Use fusion_inspect for known reads, lists, searches and Git checks, including one small file. Batch up to eight independent operations. Use ranged reads and pagination; expand exact bytes with fusion_evidence. For an uncertain minor task, give fusion_assist a short goal and scope. Jev selects validated IDs automatically when configured; ordinary reads need no Jev call or extra Jev access approval.
 
-Run the exact host-chosen command through fusion-jev run -- program argv... if installed globally, else npx -y fusion-jev@0.3.1 run -- program argv.... Use --raw for short exact output. In PowerShell, quote the separator as '--'. Preserve the program, arguments, cwd and exit status; review discovered scripts and revalidate their source hash before execution.
+Run the exact host-chosen command through fusion-jev run -- program argv... if installed globally, else the version-pinned npx command in the MCP server instructions. Use --raw for short exact output. In PowerShell, quote the separator as '--'. Preserve the program, arguments, cwd and exit status; review discovered scripts and revalidate their source hash before execution.
 
 Pass the current project's absolute root directly to local stdio tools. No separate root registration is needed in the default host access mode. In restricted mode, respect the configured root list. Use native tools only when Fusion is unavailable, unsupported, or has returned an explicit error; state that reason and continue. Never repeatedly retry a failed call.
 
