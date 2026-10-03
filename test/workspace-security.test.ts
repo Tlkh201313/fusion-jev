@@ -280,6 +280,10 @@ test('Fixed Git summarizes submodules without following an outside working tree 
       'junction fixture permits inline Git traversal',
     );
   }
+  // Dirty child contents are intentionally not scanned. A committed child
+  // change must still produce only a commit summary, even through a junction.
+  childGit(['add', 'note.txt']);
+  childGit(['commit', '-qm', 'submodule commit change']);
   // Either the fixed Git summary succeeds or it is refused; no outside bytes may ever be returned.
   const outcome = await service.git('diff').then(
     (value) => ({ text: value.text }),
@@ -289,7 +293,7 @@ test('Fixed Git summarizes submodules without following an outside working tree 
   if ('error' in outcome)
     assert.notEqual(process.platform, 'win32', 'Windows must still produce the submodule summary');
   else if (process.platform === 'win32')
-    assert.match(outcome.text, /Subproject commit.*dirty/, 'submodule dirty summary remains visible');
+    assert.match(outcome.text, /Subproject commit/, 'submodule commit summary remains visible');
 });
 
 for (const markerKind of ['file', 'junction'])

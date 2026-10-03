@@ -55,7 +55,7 @@ Setup creates a private user-owned directory and files and never overwrites or l
 
 - Local read requests are bounded, literal searches report omissions, and command execution requires the host's authorization. A choice result never grants permission to execute a write.
 - Fusion captures command output only when the host deliberately runs the `npx -y fusion-jev run` wrapper (or `fusion-jev run` after a global install); it does not intercept commands.
-- Git inspection reports submodule commit pointers and dirty summaries but does not include submodule file contents. Repository layouts with redirected directories or unrelated external Git metadata fail closed; ordinary repositories and linked worktrees are supported.
+- Git inspection reports submodule commit-pointer changes and skips dirty-submodule scans and file contents. Repository layouts with redirected directories or unrelated external Git metadata fail closed; ordinary repositories and linked worktrees are supported.
 
 ## Cost
 
