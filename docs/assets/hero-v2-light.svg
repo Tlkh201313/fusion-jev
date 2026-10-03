@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="420" viewBox="0 0 1200 420" role="img" aria-labelledby="title desc">
+<title id="title">Fusion Jev: compact results, retained evidence</title><desc id="desc">Fusion Jev. Compact command results; inspect retained evidence when more detail is needed. Local CLI and MCP tools for Claude Code and Codex. Core tools need no API key; Jev selection is optional. Receipts are short-lived and capture and redaction limits apply.</desc>
+<style>text{font-family:Arial,Helvetica,sans-serif}.mono{font-family:Consolas,"Liberation Mono",monospace}</style>
+<rect x="0.5" y="0.5" width="1199" height="419" rx="20" fill="#FFFFFF" stroke="#B8C2CF"/>
+<g transform="translate(64 122) scale(1.05)">
+    <path fill="#F2803A" d="M24 0h12v12h-12zM36 0h12v12h-12zM144 0h12v12h-12zM156 0h12v12h-12zM12 12h12v12h-12zM48 12h12v12h-12zM132 12h12v12h-12zM168 12h12v12h-12zM12 24h12v12h-12zM24 24h12v12h-12zM36 24h12v12h-12zM48 24h12v12h-12zM132 24h12v12h-12zM144 24h12v12h-12zM156 24h12v12h-12zM168 24h12v12h-12zM24 36h12v12h-12zM36 36h12v12h-12zM144 36h12v12h-12zM156 36h12v12h-12zM36 48h12v12h-12zM60 48h12v12h-12zM72 48h12v12h-12zM84 48h12v12h-12zM96 48h12v12h-12zM108 48h12v12h-12zM120 48h12v12h-12zM144 48h12v12h-12zM48 60h12v12h-12zM60 60h12v12h-12zM72 60h12v12h-12zM84 60h12v12h-12zM96 60h12v12h-12zM108 60h12v12h-12zM120 60h12v12h-12zM132 60h12v12h-12zM36 72h12v12h-12zM48 72h12v12h-12zM84 72h12v12h-12zM96 72h12v12h-12zM132 72h12v12h-12zM144 72h12v12h-12zM36 84h12v12h-12zM48 84h12v12h-12zM84 84h12v12h-12zM96 84h12v12h-12zM132 84h12v12h-12zM144 84h12v12h-12zM24 96h12v12h-12zM36 96h12v12h-12zM48 96h12v12h-12zM60 96h12v12h-12zM72 96h12v12h-12zM84 96h12v12h-12zM96 96h12v12h-12zM108 96h12v12h-12zM120 96h12v12h-12zM132 96h12v12h-12zM144 96h12v12h-12zM156 96h12v12h-12zM24 108h12v12h-12zM36 108h12v12h-12zM48 108h12v12h-12zM60 108h12v12h-12zM120 108h12v12h-12zM132 108h12v12h-12zM144 108h12v12h-12zM156 108h12v12h-12zM36 120h12v12h-12zM48 120h12v12h-12zM60 120h12v12h-12zM72 120h12v12h-12zM84 120h12v12h-12zM96 120h12v12h-12zM108 120h12v12h-12zM120 120h12v12h-12zM132 120h12v12h-12zM144 120h12v12h-12zM36 132h12v12h-12zM60 132h12v12h-12zM120 132h12v12h-12zM144 132h12v12h-12zM24 144h12v12h-12zM60 144h12v12h-12zM120 144h12v12h-12zM156 144h12v12h-12z"/>
+    <path fill="#FFFFFF" d="M60 72h12v12h-12zM108 72h12v12h-12z"/>
+    <path fill="#1B1F24" d="M72 72h12v12h-12zM120 72h12v12h-12zM60 84h12v12h-12zM72 84h12v12h-12zM108 84h12v12h-12zM120 84h12v12h-12z"/>
+    <path fill="#C9561E" d="M72 108h12v12h-12zM84 108h12v12h-12zM96 108h12v12h-12zM108 108h12v12h-12z"/>
+  </g>
+<text x="300" y="112" font-size="64" fill="#18222F" font-weight="800">Fusion <tspan fill="#AF4A15">Jev</tspan></text>
+<text x="302" y="172" font-size="28" fill="#18222F" font-weight="400" text-anchor="start" class="">Compact command results.</text>
+<text x="302" y="214" font-size="28" fill="#18222F" font-weight="400" text-anchor="start" class="">Inspect retained evidence when you need it.</text>
+<text x="302" y="250" font-size="21" fill="#475569" font-weight="400" text-anchor="start" class="">Local CLI + MCP tools for coding agents</text>
+<rect x="302" y="278" width="262" height="44" rx="13" fill="#F6F8FA" stroke="#B8C2CF" stroke-width="1.4"/>
+<text x="323" y="307" font-size="19" fill="#18222F" font-weight="600" text-anchor="start" class="">Claude Code · Codex</text>
+<text x="586" y="307" font-size="19" fill="#475569" font-weight="400" text-anchor="start" class="">Core tools need no API key</text>
+<text x="302" y="348" font-size="17" fill="#AF4A15" font-weight="600" text-anchor="start" class="">Optional official Jev (TypeSafe) selection</text>
+<text x="302" y="380" font-size="16" fill="#475569" font-weight="400" text-anchor="start" class="">Short-lived receipts; capture, redaction and eviction limits apply.</text>
+</svg>

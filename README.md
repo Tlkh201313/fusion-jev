@@ -1,180 +1,269 @@
 <div align="center">
 
-<img src="docs/assets/hero.svg" alt="Fusion Jev: keep noisy command output small, recover the captured evidence when you need it. Works with Claude Code and Codex." width="880">
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/assets/hero-v2-light.svg">
+  <img src="docs/assets/hero-v2.svg" alt="Fusion Jev: compact command results with retained evidence to inspect on demand. Local CLI and MCP tools; official Jev (TypeSafe) selection is optional." width="880">
+</picture>
 
 # Fusion Jev
 
-**Keep noisy command output small. Recover the captured evidence when you need it.**
+**Find the useful part of a noisy build or test log. Inspect retained output when you need more.**
 
-[![npm](https://img.shields.io/npm/v/fusion-jev?logo=npm)](https://www.npmjs.com/package/fusion-jev)
-[![CI](https://github.com/Tlkh201313/fusion-jev/actions/workflows/ci.yml/badge.svg)](https://github.com/Tlkh201313/fusion-jev/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Node >=22.12](https://img.shields.io/badge/node-%3E%3D22.12-339933?logo=node.js&logoColor=white)](https://nodejs.org)
-[![MCP](https://img.shields.io/badge/MCP-server-8A2BE2)](https://modelcontextprotocol.io)
+[![CI](https://github.com/Tlkh201313/fusion-jev/actions/workflows/ci.yml/badge.svg)](https://github.com/Tlkh201313/fusion-jev/actions/workflows/ci.yml)
 
 </div>
 
-Fusion Jev is a local CLI and [MCP](https://modelcontextprotocol.io) server for **Claude Code** and **Codex**. It runs a command for your coding agent, hands back a compact diagnostic instead of the full log, and keeps the original bytes behind a short-lived receipt you can expand on demand. No key or account is needed for the core tools.
+Fusion Jev is a local CLI and MCP server for Claude Code and Codex. Use it when long command output or several repository reads would bury the detail your coding agent needs. The agent gets a compact result and can expand local receipts without rerunning the original command.
 
-<!-- TODO(human): record docs/assets/demo.gif (vhs or asciinema) running the fixture below, then uncomment:
-<p align="center"><img src="docs/assets/demo.gif" alt="Fusion Jev turning 200 noisy lines into one diagnostic and a receipt" width="720"></p>
--->
+The core workflow needs no API key. Your coding agent still owns reasoning, edits, command choice and permissions. Optional official TypeSafe Jev helps select bounded inspection actions through the TypeSafe API. Users with their own official Jev account can opt in; no maintainer-specific router or configuration is required.
 
-## See it work
+**Early-release status:** start in a disposable project with synthetic output. Receipt recovery covers retained captured data; clipping, redaction, expiry and eviction can limit it. Fusion is not an OS sandbox, and running a command through it does not make that command safe.
 
-<p align="center"><img src="docs/assets/before-after.svg" alt="Without Fusion the agent reads 200 noisy lines with one error at the end; with Fusion Jev it gets exitCode=2, one diagnostic, omittedBytes=4290 and a receipt ID, and the full log stays recoverable" width="880"></p>
+## When to use it
 
-A deliberately failing command with 200 lines of noise and one real error:
+Try Fusion for a noisy failing build/test, several bounded reads in one inspection, or a result where you want a short view with recoverable detail. Prefer native tools for a tiny one-off read.
 
-```sh
-npx -y fusion-jev run '--' node -e "for (let i=0;i<200;i++) console.log('unchanged context '+i); console.error('src/example.ts:4:2 - error TS2322: fixture failure'); process.exitCode=2"
-```
+### What the tools do
 
-The host sees a compact result. This is real output from the CLI (stdout lines first, then the stderr line), trimmed only in that receipt UUIDs are shortened to their first 8 characters (`…`):
+The default `assist` profile advertises three MCP tools:
 
-```text
-termination=exit exitCode=2 durationMs=403 stdout=546e7c15-… stdoutStoredBytes=4290 stderr=1c86ca87-… stderrStoredBytes=51
-omittedBytes=4290
-recoverStdout=npx -y fusion-jev@0.3.0 evidence 546e7c15-… --raw
-src/example.ts:4:2 - error TS2322: fixture failure
-```
+- `fusion_inspect`: batch up to eight bounded file, search, outline, symbol or Git inspection requests
+- `fusion_assist`: gather evidence for a short goal; uncertain work returns to the host
+- `fusion_evidence`: expand receipts, or import attributed host research as untrusted data
 
-The process exit code (2) is preserved. The 51-byte stderr is small and complete, so it is printed verbatim and needs no recovery line; only the 4,290 bytes of stdout were left out, and they stay available behind the receipt. Flags such as `stdoutTruncated=true` appear only when they apply. When launched through `npx`, the recovery line names the pinned `npx -y fusion-jev@<version>` form; after a global install it reads `fusion-jev evidence …`. In the real output each receipt ID is a full 36-character UUID; paste the full ID when recovering:
+Command execution uses the **CLI**, `fusion-jev run -- program args...`, through your host's normal command tool. Installing MCP alone does not intercept native commands or guarantee your agent will choose Fusion. Use native tools for a single small read, and Fusion where longer output or batched evidence makes the trial worthwhile.
 
-```sh
-npx -y fusion-jev@0.3.0 evidence 546e7c15-… --raw   # prints the original 200 lines
-```
+`FUSION_MCP_PROFILE=full` exposes the larger inspection/routing catalog. The full profile is included in the same package; it is not a paid edition or another install. Keep the default for first use.
 
-Output that is small to begin with (1 KiB or less across both streams, complete and valid UTF-8) is passed through unchanged with one status line, and no receipt is written:
+## How it works
 
-```text
-v24.12.0
-exitCode=0 durationMs=54
-```
+<p align="center">
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/assets/how-it-works-v2-light.svg">
+  <img src="docs/assets/how-it-works-v2.svg" alt="The host authorizes work, Fusion returns compact local results and bounded receipts, and the same host reasons and verifies. Retained evidence can be expanded; optional official Jev selection never grants permission." width="880">
+</picture>
+</p>
 
-## Install in 30 seconds
+1. Your host authorizes a command or selects a bounded inspection.
+2. Fusion captures or reads data and returns a bounded result.
+3. Local receipts retain captured data for a short time.
+4. The host expands a receipt when the compact view is insufficient.
 
-Needs Node 22.12+ and npm. Nothing else is required.
+The source preview also has small-output passthrough at 1 KiB or less across complete valid-UTF-8 streams, plus a status line. That later path is not present in the inspected published `0.3.0` CLI. Compact wrappers can add output and startup overhead, especially for small tasks.
 
-### Claude Code
+[Detailed mechanism and receipt lifecycle](docs/how-it-works.md)
 
-```sh
-claude mcp add fusion-jev -- npx -y fusion-jev stdio
-```
+## Which version am I installing?
 
-Or install the plugin, which adds a short usage hint at session start:
+The public npm registry lists [`fusion-jev@0.3.0`](https://registry.npmjs.org/fusion-jev/0.3.0), checked 3 October 2026. Its metadata points to this repository and names source revision `5dfdd2495e14590dab7412132b4f341f8df2c8fe`. This confirms publication, not a tested install on your machine.
 
-```text
-/plugin marketplace add Tlkh201313/fusion-jev
-/plugin install fusion-jev@fusion-jev
-```
+The newer source-preview revision [`ca455469`](https://github.com/Tlkh201313/fusion-jev/commit/ca455469a624f776567de8f336880191b3ce8037) also says `0.3.0`, but contains later code. Installing npm `0.3.0` does **not** install those later changes. Commands below use syntax present in the published package; exact rendering can differ from source-preview examples. Main still uses the provisional package name `fusion-jev-mcp`; it is not the npm package to install.
 
-### Codex
+Before installing, inspect registry metadata without running the package:
 
 ```sh
-codex mcp add fusion-jev -- npx -y fusion-jev stdio
+npm view fusion-jev@0.3.0 name version repository.url engines bin dist.integrity --json --registry=https://registry.npmjs.org
 ```
 
-Or add this to `~/.codex/config.toml`:
+Expect the name `fusion-jev`, version `0.3.0`, repository `git+https://github.com/Tlkh201313/fusion-jev.git`, Node requirement `>=22.12.0`, and executable `fusion-jev`. Stop if the identity differs. See the [setup prompt](AGENT_SETUP_PROMPT.md) if you want your own coding agent to walk through this safely.
+
+## Requirements
+
+- Node **22.12.0 or newer**, npm, and a terminal
+- Claude Code or Codex for MCP use; neither is needed for CLI-only use
+- Network access to npm for installation and first `npx` use
+- A compatible `better-sqlite3` native binary, or Python and a C/C++ build toolchain if npm must compile it. Native Windows may need Visual Studio C++ build tools.
+
+Check `node --version` and `npm --version` first. Do not bypass permission checks or switch to an administrator installation to hide an error. OS/architecture and host compatibility need verification on your actual setup; the Node engine field alone is not a support matrix. See [installation details](docs/install.md).
+
+## Install the full package
+
+After the metadata and requirements checks above, install the verified published version:
+
+```sh
+npm install -g fusion-jev@0.3.0
+npm ls -g fusion-jev --depth=0
+fusion-jev --help
+fusion-jev doctor stdio
+```
+
+This installs the **CLI and MCP server together**, including the optional full MCP profile. There is no separate router package to install. Installation executes npm/native-dependency setup; `better-sqlite3` may need Python and a C/C++ toolchain if no prebuilt binary matches your platform. Do not work around an install failure with administrator privileges or disabled checks.
+
+Use `fusion-jev setup --dry-run` to preview durable absolute-path host commands. Ordinary `fusion-jev setup` additionally creates a private provider template/config; it still does not register the host automatically. Confirm the installed executable is on the PATH your coding host sees.
+
+**Alternative, without a global install:** use pinned `npx -y fusion-jev@0.3.0 ...`. This downloads/runs the package via npm's cache; it is not a permanent global CLI. Choose one route deliberately. The fixture below shows both.
+
+## First success: one harmless noisy command
+
+Run this in a disposable directory. It prints synthetic noise and a diagnostic, deliberately exits with code 2, and does not read or edit project files:
+
+```sh
+fusion-jev run '--' node -e "for (let i=0;i<200;i++) console.log('unchanged context '+i); console.error('src/example.ts:4:2 - error TS2322: fixture failure'); process.exitCode=2"
+```
+
+Without a global install, run the same fixture with `npx`:
+
+```sh
+npx -y fusion-jev@0.3.0 run '--' node -e "for (let i=0;i<200;i++) console.log('unchanged context '+i); console.error('src/example.ts:4:2 - error TS2322: fixture failure'); process.exitCode=2"
+```
+
+The quoted `'--'` also works in PowerShell. Exit code **2 is expected**. Look for that status, the `TS2322` diagnostic, and a `recoverStdout=` command. Copy the complete recovery command printed by your own run and execute it within ten minutes. It should show the retained synthetic output without rerunning the Node command.
+
+Do not paste a receipt ID from a screenshot or documentation. Receipt IDs belong to a particular run and machine; an abbreviated ID will not work. Check capture/redaction flags before calling recovered output complete. JSON/MCP recovery is paged. CLI `evidence --raw` follows pages and prints all retained bytes from the requested start offset; it cannot restore uncaptured or redacted bytes.
+
+Once that works, try one build or test command you already trust in a project you control:
+
+```sh
+npx -y fusion-jev@0.3.0 run '--' npm test
+```
+
+Project test scripts can execute arbitrary code. Review unfamiliar scripts first. The sample fixture demonstrates mechanics, not token savings or real-project correctness.
+
+## Connect your coding agent
+
+Choose **one** route. For the global installation above, use the absolute-path host command from `fusion-jev setup --dry-run`. The direct examples below show the pinned `npx` alternative. Adding both an MCP entry and a plugin can duplicate servers. First inspect existing host configuration, then choose the intended project and configuration scope. `setup` prints connection commands; it does not add a server for you.
+
+### Claude Code: MCP only
+
+From the intended project, add a local-scoped server:
+
+```sh
+claude mcp add --transport stdio --scope local fusion-jev -- npx -y fusion-jev@0.3.0 stdio
+```
+
+Restart or reconnect, then inspect `/mcp`. If Fusion starts in another directory, set `FUSION_WORKSPACE_ROOT` to your project's exact absolute path in the server's launch environment. It defaults to the directory in which the server starts.
+
+Native Windows can have trouble launching the `npx.cmd` shim. Prefer a global installation plus the absolute Node/CLI paths printed by `fusion-jev setup --dry-run`. The `cmd /c npx` workaround and its caveats are in [Windows notes](docs/install.md#windows-notes); it is not verified for every host/version.
+
+[Claude Code MCP reference](https://code.claude.com/docs/en/mcp)
+
+### Codex: MCP only
+
+```sh
+codex mcp add fusion-jev -- npx -y fusion-jev@0.3.0 stdio
+```
+
+Or add a single table to `~/.codex/config.toml`, preserving unrelated configuration:
 
 ```toml
 [mcp_servers.fusion-jev]
 command = "npx"
-args = ["-y", "fusion-jev", "stdio"]
+args = ["-y", "fusion-jev@0.3.0", "stdio"]
 ```
 
-### Native Windows
+Set `FUSION_WORKSPACE_ROOT` in this entry's `env` table to the exact absolute project root when needed. Restart the session and inspect `/mcp`. For native Windows launch failures, use absolute Node/CLI paths after a global installation instead of assuming a shell wrapper works.
 
-If the host reports `Connection closed` or `ENOENT` for `npx` (it is a `.cmd` shim), add the Claude Code server with the `cmd` wrapper instead of the plugin: `claude mcp add fusion-jev -- cmd /c npx -y fusion-jev stdio`. This is the reported workaround ([anthropics/claude-code#20061](https://github.com/anthropics/claude-code/issues/20061)), not something Claude Code's MCP docs describe. For Codex, no Windows-specific `npx` form is documented; use the absolute-path command from `fusion-jev setup --dry-run` after a global install. Details: [docs/install.md](docs/install.md#windows-notes).
+[Codex MCP reference](https://learn.chatgpt.com/docs/extend/mcp?surface=cli)
 
-### CLI only
+### Optional native adapters
+
+The source preview includes a Claude plugin with skills and hooks, and a Codex adapter with usage guidance. Both preview manifests launch `npx -y fusion-jev@0.3.0 stdio` under the server key `fusion`, so they still run the published package.
+
+The Claude preview's marketplace is `fusion-jev`, while current main's marketplace is `fusion-local`. A default-branch marketplace install does not fetch the preview automatically. To inspect the preview adapter, use the exact checked-out source and its [Claude guide](plugin/fusion-jev-claude/README.md); do not substitute an unverified marketplace command. The [Codex adapter guide](plugin/fusion-jev/README.md) describes its local import workflow. MCP-only is the simpler first trial.
+
+Claude's preview hooks can suggest Fusion, and can deny an oversized whole-file Read once per file/session. They do not authorize commands or rewrite them. `FUSION_HOOKS=off` disables that plugin's guidance. Codex's adapter supplies instructions; it has no equivalent Fusion hook implementation.
+
+### Verify activation, not just registration
 
 ```sh
-npx -y fusion-jev run '--' npm test        # quote '--' in PowerShell
-npx -y fusion-jev evidence RECEIPT_ID --raw
-
-# or install once
-npm install -g fusion-jev
-fusion-jev setup        # prints connection commands; use --dry-run to preview
-fusion-jev doctor       # local readiness check, no network
+npx -y fusion-jev@0.3.0 doctor stdio
 ```
 
-Then ask your agent: "Use Fusion to read the first 20 lines of package.json." Full steps for every host, Windows notes and troubleshooting: [docs/install.md](docs/install.md).
+Doctor checks local configuration without calling a provider. `status: ready` is a local check; `liveConnectivity: not-tested` is expected. A missing optional provider is normal without a key.
 
-## What you get
+Then ask your coding agent:
 
-The default profile exposes three MCP tools:
+> Use Fusion to read the first 20 lines of this project's package.json. Show which Fusion tool you called. Do not enable Jev or edit any files.
 
-| Tool | Use it for |
-| --- | --- |
-| `fusion_inspect` | Known file reads, literal searches and Git inspections; batch up to eight independent actions. |
-| `fusion_assist` | A short grounded goal when the next bounded inspection is unclear. |
-| `fusion_evidence` | Recover captured detail with explicit clipping, redaction and expiry information. |
+If this project has no package.json, choose a small non-sensitive text file. Seeing the actual tool call verifies more than a saved server entry. Next, ask it to run the synthetic fixture above through its usual command tool and recover the omitted detail.
 
-Commands are run through the CLI wrapper, `npx -y fusion-jev run -- program args...` (or `fusion-jev run -- program args...` after a global install), chosen and authorized by your host. Fusion does not intercept native tools or pick arbitrary shell commands.
+## Official TypeSafe Jev, optional
 
-## How it works
+The public integration uses official TypeSafe Jev (`jev-latest`) through `POST https://api.typesafe.ai/v1/systemone` with your own TypeSafe key. No alternate provider endpoint or maintainer-specific setup is required. See the [official API reference](https://docs.typesafe.ai/api), [quick start](https://docs.typesafe.ai/introduction/quickstart), and [model/version guide](https://docs.typesafe.ai/models).
 
-<p align="center"><img src="docs/assets/how-it-works.svg" alt="Flow: host runs fusion-jev run or calls the MCP server; the executor captures output, stores original bytes in a local expiring receipt store, and returns a compact diagnostic plus receipt IDs; the host expands receipts with fusion_evidence or fusion-jev evidence" width="880"></p>
+### Already using official Jev?
 
-```mermaid
-flowchart LR
-  Host["Host<br/>(Claude Code / Codex)"] -->|MCP tools| Server["fusion-jev stdio"]
-  Host -->|"npx -y fusion-jev run -- cmd"| Exec["Executor<br/>captures stdout and stderr"]
-  Server --> Exec
-  Exec -->|"redact known secrets, cap size"| Store[("Receipt store<br/>local, private, expiring")]
-  Exec -->|"compact diagnostic + receipt IDs"| Host
-  Host -->|"fusion_evidence / evidence ID"| Store
-  Server -.->|"optional: choose among validated actions"| Jev["Jev<br/>(TypeSafe API)"]
-```
+Use your **own existing TypeSafe key** from your local environment or a trusted private provider file. You do not need another provider account, router install or maintainer configuration. Never paste a key into chat or a command argument.
 
-- **Capture.** The wrapper runs your command, keeps stdout and stderr, and preserves the exit status.
-- **Summarize.** Supported diagnostics become short entries with byte ranges; small output is passed through.
-- **Receipt.** Captured bytes are stored locally and referenced by ID, so the full output can be recovered without rerunning the command.
-- **Escalate.** Anything uncertain goes back to your current host session. Fusion never makes its own model call to Anthropic or OpenAI.
+After a global install, `fusion-jev setup` creates a local private template and prints its path. Edit that file locally to set `TYPESAFE_API_KEY`, or keep using an existing trusted file with `fusion-jev config env-file /absolute/path/to/provider.env`. Do not print the file's contents. Restart the MCP connection after changing its provider configuration.
 
-More detail, including the receipt lifecycle: [docs/how-it-works.md](docs/how-it-works.md).
+The default `assist` profile keeps the tool surface small. To expose explicit choice/routing tools (`fusion_choose`, `fusion_choose_batch`, `fusion_route`, `fusion_route_batch`) as well as inspections, set `FUSION_MCP_PROFILE=full` in the server's launch environment and reconnect. This changes the tool catalog in the same installed package. It does not grant extra filesystem permission.
 
-## Jev (optional)
+Doctor can confirm a key is configured, but makes no provider request. A keyless fixture or local inspection does not prove Jev is active. A real Jev check requires an explicitly approved request, with its task data and possible TypeSafe charge understood; see [configuration](docs/configuration.md).
 
-If you set `TYPESAFE_API_KEY`, Fusion can ask TypeSafe's Jev to pick among a short list of pre-validated actions for routine goals. Jev only selects an ID from that list; it cannot write commands, arguments or code, and it cannot grant permission. Without a key, deterministic tools still work and uncertain choices return to your host. See [docs/configuration.md](docs/configuration.md).
+### Credentials, cost and privacy
 
-## Glossary
+No provider key is needed for local inspection or command capture. With an explicitly configured `TYPESAFE_API_KEY`, TypeSafe Jev can select an ID from bounded candidate actions. It cannot grant permissions or invent arbitrary commands. Provider requests can send task text and candidate descriptions to TypeSafe, and may incur charges. Review [configuration](docs/configuration.md) before enabling it.
 
-- **Host**: the coding agent that runs Fusion, such as Claude Code or Codex. It keeps reasoning, edits, command authorization and correctness decisions.
-- **Receipt**: an ID for captured command output or inspection data, stored locally and expandable through `fusion_evidence` or `npx -y fusion-jev evidence ID`.
-- **Jev**: a model service from TypeSafe ([docs](https://docs.typesafe.ai/api)) that Fusion can optionally consult to choose among validated candidate actions. Fusion Jev is an independent community integration and is not affiliated with TypeSafe.
-- **Escalation**: returning an uncertain decision to the host instead of guessing.
-- **Profile**: the tool set the MCP server exposes. `assist` (default) has the three tools above; `FUSION_MCP_PROFILE=full` adds routing and inspection tools.
+Keep secrets out of shell arguments, manifests, screenshots, issues and public logs. Use a trusted private provider file if you choose to configure Jev; never commit it. Known-secret redaction is best effort and does not guarantee output is secret-free. Your coding host may transmit tool results to its own model service independently of Fusion.
 
-## FAQ
+Fusion Jev is an independent community integration, not an official TypeSafe product or endorsement.
 
-**Does it send my code anywhere?** Local reads, searches, Git inspection and command capture stay on your machine. If you configure a TypeSafe key, Jev receives only the bounded task text and candidate descriptions Fusion sends it; the only network destination the CLI contacts is the official TypeSafe API, and only when a key is set.
+## Update and remove
 
-**Do I need a key?** No. Compact command evidence and the three tools work without one. A key only enables optional Jev choices.
-
-**What does it cost?** Fusion Jev is free and MIT licensed. Jev requests, if you enable them, are billed by TypeSafe under its terms. Fallback uses your current host session, not a separate API.
-
-**How is it different from RTK or Context7?** RTK's main product is filtering command output across many commands, and it offers its own recall. Context7 retrieves current library documentation. Fusion Jev focuses on MCP tools plus receipts for recovering captured output and bounded inspections. They can coexist. See [docs/comparison.md](docs/comparison.md).
-
-More questions and troubleshooting: [docs/faq.md](docs/faq.md).
-
-## Limits
-
-- Receipts expire after 10 minutes. The store keeps at most 128 receipts and 32 MiB, so older ones can be evicted sooner.
-- Each output stream is captured up to 8 MiB. Watch for `stdoutTruncated=true` or `stdoutRedacted=true` (these flags are printed only when they apply): recovery returns the retained bytes, not omitted or redacted content. Redaction matches known secret patterns and is not a guarantee that output holds no secrets.
-- Tiny outputs (1 KiB or less in total) are passed through verbatim plus one status line, so they cost a few bytes more than the raw output and create no receipt.
-- The evidence store uses `better-sqlite3`, a native module. Installation needs a prebuilt binary for your Node/platform or a local build toolchain (see [docs/install.md](docs/install.md)).
-- Token or speed savings have not been measured on real hosts yet. The method and an empty results table are in [benchmark/real-host.md](https://github.com/Tlkh201313/fusion-jev/blob/main/benchmark/real-host.md); no savings figure is claimed.
-- Jev's confidence and probability values are uncalibrated gates, and a configured key is not proof it works.
-
-## Develop
+### Inspect installed and available versions
 
 ```sh
-git clone https://github.com/Tlkh201313/fusion-jev.git && cd fusion-jev
+npm ls -g fusion-jev --depth=0
+npm view fusion-jev version --registry=https://registry.npmjs.org
+```
+
+There is currently **no** `fusion-jev --version`, `fusion-jev update`, or built-in outdated-version notice. `npm ls` describes the global install; it does not identify a pinned `npx` process, plugin copy or source checkout. Check the actual host command and version pin too.
+
+### Upgrade deliberately
+
+For a global install, inspect the new version's metadata and release notes, then run `npm install -g fusion-jev@VERSION`, replacing `VERSION` with the reviewed exact version. `npm install -g fusion-jev@latest` deliberately follows npm's latest tag; use it only if that is your intent. Restart the MCP connection and repeat doctor, fixture and recovery.
+
+Pinned `npx` entries and preview adapters stay on `0.3.0` until their pins change. A global upgrade does not update them. Change only the relevant host entry or update the adapter through its verified install source, then inspect the resulting command. To roll back, restore the prior exact package version and host pin. No update should silently broaden roots, enable a provider, or change unrelated settings.
+
+### Uninstall
+
+- Direct Claude MCP entry: inspect `claude mcp get fusion-jev`, then `claude mcp remove fusion-jev --scope local` for the local-scoped example above. Use the actual scope if different.
+- Direct Codex entry: inspect `codex mcp --help` for your version's removal command, or remove only `[mcp_servers.fusion-jev]` and its child tables from the same config file you edited.
+- Claude plugin: use `/plugin` → Installed → the actual Fusion plugin → Uninstall at its original scope. Do not remove the entire marketplace if other plugins depend on it.
+- Codex adapter: remove that adapter through the same local plugin workflow used to add it.
+- Global package: `npm uninstall -g fusion-jev`.
+
+Restart the host and verify Fusion is gone while other tools still work. Uninstallation does not imply receipt/configuration deletion. Optional cleanup locations: `${XDG_CACHE_HOME:-~/.cache}/fusion-jev-mcp/evidence` and `${XDG_CONFIG_HOME:-~/.config}/fusion-jev-mcp` on Linux/macOS; `%LOCALAPPDATA%\fusion-jev-mcp\evidence` and `~/.fusion-jev-mcp` on Windows. `FUSION_CONFIG_HOME` can change the configuration base. Inspect the resolved paths and back up wanted settings before deleting only Fusion-owned data. Do not clear the whole npm cache or another tool's configuration.
+
+## Limits and measurements
+
+- Receipts expire after **10 minutes**; a **128-receipt / 32 MiB** store can evict them sooner.
+- Default capture limit is **8 MiB per stream**. Recovery cannot restore bytes that were never retained or were redacted. The supported capture override can change that limit.
+- Evidence pages are at most **64 KiB**. Large receipts require pagination; stale or missing evidence needs explicit handling.
+- Workspace roots are exact configured directories, not every directory your host can access. Extra roots are opt-in via `FUSION_WORKSPACE_ALLOWED_ROOTS` (`:` on Linux/macOS, `;` on Windows).
+- Parser summaries, approximate outlines and Jev confidence gates are not correctness guarantees. Inspect underlying evidence for decisions that need it.
+- Historical [direct-output results](benchmark/results/2026-10-03-raw-vs-fusion.md) and [Claude session results](benchmark/results/2026-10-03-real-host-claude.md) were recorded on `fc942197`, not the npm artifact or this source-preview revision. They do not establish universal token, cost or speed savings.
+- The small host study has task/environment differences, no observed MCP calls, and an arm that did not use Fusion. Direct-output totals are dominated by a large Git patch whose details require expansion. Small outputs can grow. Treat these as initial observations, not launch claims.
+
+<p align="center">
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/assets/benchmark-initial-bytes-light.svg">
+  <img src="docs/assets/benchmark-initial-bytes.svg" alt="Historical initial-output bytes from fc942197 on 3 October 2026, all eleven workloads. Five small outputs grew; receipt outputs omitted detail and expansion adds bytes and time. These are not total-session tokens or cost savings." width="1000">
+</picture>
+</p>
+
+This graph plots historical initial CLI output only. It excludes receipt-expansion bytes/time and does not measure the currently published package.
+
+[Measurement protocol](benchmark/real-host.md) · [Comparison with RTK and Context7](docs/comparison.md) · [FAQ](docs/faq.md)
+
+## Develop from the intended source revision
+
+Use an isolated checkout for preview evaluation. Confirm the intended revision rather than assuming main contains the preview:
+
+```sh
+git clone https://github.com/Tlkh201313/fusion-jev.git
+cd fusion-jev
+git checkout --detach ca455469a624f776567de8f336880191b3ce8037
 npm ci
-npm run check        # typecheck + tests + build
-npm run pack:smoke   # install the packed tarball in a clean directory
+npm run check
+npm run pack:smoke
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md), [CODE_OF_CONDUCT.md](https://github.com/Tlkh201313/fusion-jev/blob/main/CODE_OF_CONDUCT.md), [CHANGELOG.md](CHANGELOG.md) and the [docs index](docs/README.md). Released under the [MIT license](LICENSE).
+These commands install dependencies and execute project code; review the checkout first. They are a contributor verification path, not evidence they passed on your platform. Use `node dist/cli.js setup --dry-run` after a successful build for local absolute-path connection instructions. Source npm scripts may load `.env`; do not inherit private provider credentials into preview tests.
+
+[Docs index](docs/README.md) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [Changelog](CHANGELOG.md) · [MIT license](LICENSE)
+
+<!-- Keep the existing hero.svg, how-it-works.svg and before-after.svg assets in the repository; this README uses reviewed v2 replacements. Add an actual recorded demo only after install/activation/recovery verification; do not use generated performance art as measurement evidence. -->
