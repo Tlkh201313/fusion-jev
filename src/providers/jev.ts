@@ -1,4 +1,5 @@
 import { ProviderError } from '../errors.js';
+import { LIMITS } from '../limits.js';
 import { ESCALATE, type ChoiceAnswer, type ChoiceBatch, type ChoiceProvider,
   type PreparedRequest, type ProviderConfig } from '../types.js';
 import { isObject, postJson, recordUsage, tokenCounts, type Fetcher } from './http.js';
@@ -12,7 +13,7 @@ export class JevProvider implements ChoiceProvider {
     const state: unknown[] = [];
     for (const [i, request] of requests.entries()) {
       if (request.candidates.length === 0) throw new ProviderError('no_candidates');
-      if (request.candidates.length > 254) throw new ProviderError('too_many_candidates');
+      if (request.candidates.length > LIMITS.maxCandidates) throw new ProviderError('too_many_candidates');
       const criteria: Record<string, string> = Object.create(null);
       const sharedCriteria: Record<string, string> = Object.create(null);
       for (const candidate of request.candidates) {

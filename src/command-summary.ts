@@ -1,4 +1,6 @@
 import type { EvidenceStore, EvidenceReceipt } from './evidence.js';
+import { LIMITS } from './limits.js';
+import { excerpt } from './util/text.js';
 import { scanDiagnostics, type Diagnostic } from './diagnostics.js';
 import { summarizeGit } from './git-summary.js';
 
@@ -25,7 +27,7 @@ export async function summarizeChannel(store: EvidenceStore, receipt: EvidenceRe
   const chunks: Buffer[] = [];
   let startByte = 0;
   do {
-    const page = await store.expand({ id: receipt.id, startByte, maxBytes: 64 * 1024 });
+    const page = await store.expand({ id: receipt.id, startByte, maxBytes: LIMITS.pageBytes });
     if (page.status !== 'ok' && page.status !== 'stale')
       return { diagnostics: [], diagnosticsOmitted: 0, excerptsClipped: 0, omittedBytes: receipt.storedBytes, unparsedBytes: receipt.storedBytes, unavailable: page.status };
     chunks.push(Buffer.from(page.dataBase64, 'base64'));
@@ -87,7 +89,7 @@ const codeOf = (diagnostic: Diagnostic, bytes: Buffer) =>
 
 function renderDiagnostic(diagnostic: Diagnostic): string {
   const location = diagnostic.file ? `${diagnostic.file}${diagnostic.line === undefined ? '' : `:${diagnostic.line}`}${diagnostic.column === undefined ? '' : `:${diagnostic.column}`}: ` : '';
-  return `${location}${diagnostic.severity}: ${diagnostic.message.slice(0, 200)}${diagnostic.message.length > 200 ? ' [excerpt clipped]' : ''} [${diagnostic.evidenceId}:${diagnostic.startByte}-${diagnostic.endByte}]`;
+  return `${location}${diagnostic.severity}: ${excerpt(diagnostic.message, 200, ' [excerpt clipped]')} [${diagnostic.evidenceId}:${diagnostic.startByte}-${diagnostic.endByte}]`;
 }
 
 /** Fill a byte budget: errors before warnings, the first of each distinct code/message first, then the rest in order; shown in source order. */

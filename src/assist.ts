@@ -4,8 +4,8 @@ import { dirname, isAbsolute } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { discoverChecks, parseDiagnostics, type CheckSuggestion } from './diagnostics.js';
 import type { EvidenceStore } from './evidence.js';
-import type { RoutingService } from './mcp.js';
-import type { Candidate, ProviderFailureCategory, ReasonCode, RouteRequest, UsageRecord } from './types.js';
+import { LIMITS } from './limits.js';
+import type { Candidate, ProviderFailureCategory, ReasonCode, RouteRequest, RoutingService, UsageRecord } from './types.js';
 import { WorkspaceError, type WorkspaceService } from './workspace.js';
 
 export interface AssistRequest {
@@ -43,9 +43,9 @@ type State = {
 const ACTION_LIMIT = 6;
 const JEV_LIMIT = 2;
 const DEADLINE_MS = 20_000;
-const TTL_MS = 600_000;
+const TTL_MS = LIMITS.receiptTtlMs;
 const MAX_STATES = 128;
-const MAX_DIAGNOSTIC_LINE_BYTES = 128 * 1024;
+const MAX_DIAGNOSTIC_LINE_BYTES = LIMITS.diagnosticLineBytes;
 const manifestNames = ['package.json', 'pyproject.toml', 'pytest.ini', 'Cargo.toml', 'go.mod', 'CMakeLists.txt', 'Makefile'];
 
 function boundedLimit(value: number | undefined, cap: number): number {
@@ -321,7 +321,7 @@ export class AssistanceService {
     }
     const item = state.evidenceQueue.shift();
     if (!item) return undefined;
-    const page = await this.evidence.expand({ id: item.id, startByte: item.startByte, maxBytes: 64 * 1024 });
+    const page = await this.evidence.expand({ id: item.id, startByte: item.startByte, maxBytes: LIMITS.pageBytes });
     if (page.status !== 'ok' && page.status !== 'stale') {
       state.actions.push({ kind: 'read_imported', summary: `Evidence ${item.id} unavailable (${page.status}); ${state.evidenceQueue.length} unprocessed evidence ID(s).` });
       return this.result(state, 'escalate', 'stalled', startedAt);

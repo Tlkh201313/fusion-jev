@@ -402,7 +402,7 @@ export function orderSymbols(symbols: OutlineSymbol[]): OutlineSymbol[] {
 }
 
 /** One compact row per symbol: `start-end kind name`, members indented, `~` marks an inferred end. */
-export function renderSymbols(symbols: OutlineSymbol[], limit = 400): string[] {
+function renderSymbols(symbols: OutlineSymbol[], limit = 400): string[] {
   const rows: string[] = [];
   let section = '';
   for (const sym of orderSymbols(symbols)) {

@@ -132,3 +132,9 @@ export interface FusionConfig {
 }
 
 export const ESCALATE = '__escalate__';
+
+/** The routing surface the MCP server and the assist service depend on; FusionRouter implements it. */
+export interface RoutingService {
+  route(request: RouteRequest, signal?: AbortSignal): Promise<RouteResult>;
+  routeBatch(requests: RouteRequest[], signal?: AbortSignal): Promise<BatchResult>;
+}

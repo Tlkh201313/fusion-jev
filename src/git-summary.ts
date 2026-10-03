@@ -1,4 +1,5 @@
 import { basename } from 'node:path';
+import { clip } from './util/text.js';
 
 /**
  * Deterministic, conservative summaries for informational git output (log, show, diff, status, branch).
@@ -6,7 +7,7 @@ import { basename } from 'node:path';
  * cleanly, returns undefined so the caller falls back to the generic path. Nothing is dropped silently:
  * every summary says what was omitted, and the caller prints the receipt recovery line.
  */
-export const GIT_LIST_BUDGET_BYTES = 2400; // about 600 tokens at 4 bytes per token
+const GIT_LIST_BUDGET_BYTES = 2400; // about 600 tokens at 4 bytes per token
 const MAX_STAT_ROWS = 25;
 const MAX_STATUS_PATHS = 20;
 const MAX_BRANCHES = 30;
@@ -43,7 +44,6 @@ function parseCommand(argv: readonly string[]): GitCommand | undefined {
   return { sub, flags, operands };
 }
 
-const clip = (text: string, max: number) => text.length > max ? `${text.slice(0, max - 1)}…` : text;
 const byteLength = (text: string) => Buffer.byteLength(text);
 const MONTHS: Record<string, string> = { Jan: '01', Feb: '02', Mar: '03', Apr: '04', May: '05', Jun: '06', Jul: '07', Aug: '08', Sep: '09', Oct: '10', Nov: '11', Dec: '12' };
 function shortDate(raw: string): string | undefined {

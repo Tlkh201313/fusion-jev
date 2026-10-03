@@ -1,4 +1,5 @@
 import { ProviderError } from './errors.js';
+import { LIMITS } from './limits.js';
 import { ESCALATE, type BatchResult, type ChoiceAnswer, type ChoiceProvider, type Decision, type FusionConfig, type GenerativeProvider, type PreparedRequest, type ReasonCode, type RouteRequest, type RouteResult, type UsageRecord } from './types.js';
 import { prepareRequest, validateCall } from './validation.js';
 import { Semaphore } from './concurrency.js';
@@ -38,7 +39,7 @@ export class FusionRouter {
       || probabilities.some(value => !Number.isFinite(value) || value < 0 || value > 1)
       || positiveIntegers.some(value => !Number.isSafeInteger(value) || value < 1)
       || nonnegativeIntegers.some(value => !Number.isSafeInteger(value) || value < 0)
-      || routing.maxCandidates > 254) throw new Error('Invalid routing configuration');
+      || routing.maxCandidates > LIMITS.maxCandidates) throw new Error('Invalid routing configuration');
     this.jev = options.jev;
     this.gpt = options.gpt;
     this.clock = options.clock ?? Date.now;

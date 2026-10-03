@@ -1,8 +1,10 @@
 import spawn from 'cross-spawn';
 import { spawn as nodeSpawn, type ChildProcess } from 'node:child_process';
 import type { Readable } from 'node:stream';
-import { isAbsolute, join } from 'node:path';
+import { isAbsolute } from 'node:path';
+import { windowsPowerShell } from './acl.js';
 import { EvidenceStore, type EvidenceReceipt } from './evidence.js';
+import { LIMITS } from './limits.js';
 
 export interface RunInput {
   argv: [string, ...string[]]; cwd?: string; timeoutMs?: number; maxCaptureBytes?: number; raw?: boolean;
@@ -14,7 +16,6 @@ export interface RunResult {
   stdout: EvidenceReceipt; stderr: EvidenceReceipt; durationMs: number;
 }
 
-const MAX_CAPTURE = 8 * 1024 * 1024;
 const DEFERRED_SNAPSHOT_MS = 1000;
 
 interface WindowsIdentity { pid: number; startTicks: string }
@@ -79,12 +80,13 @@ exit 0
 function runWindowsHelper(script: string, environment: Record<string, string>, signal?: AbortSignal): Promise<string | undefined> {
   return new Promise(resolve => {
     if (signal?.aborted) { resolve(undefined); return; }
-    const systemRoot = process.env.SystemRoot ?? 'C:\\Windows';
-    const command = join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
-    const helper = nodeSpawn(command, ['-NoProfile', '-NonInteractive', '-Command', script], {
-      stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true, shell: false,
-      env: { ...process.env, ...environment },
-    });
+    let helper: ChildProcess;
+    try {
+      helper = nodeSpawn(windowsPowerShell(), ['-NoProfile', '-NonInteractive', '-Command', script], {
+        stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true, shell: false,
+        env: { ...process.env, ...environment },
+      });
+    } catch { resolve(undefined); return; }
     let done = false;
     let output = '';
     const finish = (value: string | undefined) => {
@@ -97,9 +99,9 @@ function runWindowsHelper(script: string, environment: Record<string, string>, s
     // A read-only helper whose answer is no longer needed must not hold the CLI open.
     const onAbort = () => { helper.kill('SIGKILL'); finish(undefined); };
     signal?.addEventListener('abort', onAbort, { once: true });
-    const timer = setTimeout(() => { helper.kill('SIGKILL'); finish(undefined); }, 3500);
+    const timer = setTimeout(() => { helper.kill('SIGKILL'); finish(undefined); }, LIMITS.treeHelperMs);
     helper.stdout?.on('data', (chunk: Buffer) => {
-      if (output.length + chunk.length > 64 * 1024) { helper.kill('SIGKILL'); finish(undefined); }
+      if (output.length + chunk.length > LIMITS.treeHelperOutputBytes) { helper.kill('SIGKILL'); finish(undefined); }
       else output += chunk.toString('utf8');
     });
     helper.once('error', () => finish(undefined));
@@ -186,8 +188,8 @@ export async function runCommand(input: RunInput, evidence: EvidenceStore, signa
   if (input.cwd !== undefined && !isAbsolute(input.cwd)) throw new TypeError('Command cwd must be absolute');
   if (input.timeoutMs !== undefined && (!Number.isSafeInteger(input.timeoutMs) || input.timeoutMs < 1))
     throw new RangeError('Invalid command timeout');
-  const maxCaptureBytes = input.maxCaptureBytes ?? MAX_CAPTURE;
-  if (!Number.isSafeInteger(maxCaptureBytes) || maxCaptureBytes < 1 || maxCaptureBytes > MAX_CAPTURE)
+  const maxCaptureBytes = input.maxCaptureBytes ?? LIMITS.captureBytes;
+  if (!Number.isSafeInteger(maxCaptureBytes) || maxCaptureBytes < 1 || maxCaptureBytes > LIMITS.captureBytes)
     throw new RangeError('Invalid command capture limit');
   const cwd = input.cwd ?? process.cwd();
   const started = performance.now();
@@ -303,7 +305,7 @@ export async function runCommand(input: RunInput, evidence: EvidenceStore, signa
       forced = setTimeout(() => {
         child.stdout?.destroy(); child.stderr?.destroy();
         settle({ termination: why, exitCode: null, cleanupFailed: true }, true);
-      }, 4500);
+      }, LIMITS.treeCleanupMs);
     };
     const onAbort = () => stop('cancelled');
     signal?.addEventListener('abort', onAbort, { once: true });

@@ -1,9 +1,11 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { createRequire } from 'node:module';
 import type Database from 'better-sqlite3';
 import { isVerifiedStorage, verifyStorageSync, type VerifiedStorage } from './acl.js';
+import { LIMITS } from './limits.js';
+import { sha256Hex } from './util/hash.js';
 
 export type EvidenceSource =
   | { kind: 'workspace'; root: string; path: string }
@@ -20,17 +22,18 @@ export type EvidencePage =
   | { status: 'missing' | 'expired' | 'hash_mismatch'; id: string };
 
 interface Entry { receipt: EvidenceReceipt; bytes: Buffer; sourceHash?: string; canonicalPath?: string; order: number }
-const MAX_CAPTURE = 8 * 1024 * 1024;
-const MAX_PAGE = 64 * 1024;
-const DEFAULT_PAGE = 16 * 1024;
-const MAX_DISK_FILE = 12 * 1024 * 1024;
+const MAX_CAPTURE = LIMITS.captureBytes;
+const MAX_PAGE = LIMITS.pageBytes;
+const DEFAULT_PAGE = LIMITS.defaultPageBytes;
+const MAX_DISK_FILE = LIMITS.diskFileBytes;
+const RECEIPT_TTL_MS = LIMITS.receiptTtlMs;
 const EXCLUDED = new Set(['.git', 'node_modules', 'dist', '.next', '.ssh', '.aws', '.azure', '.gnupg', '.codex', '.npmrc']);
 // The native SQLite binding is loaded only when a persistent store is opened, so
 // in-memory stores (fusion-jev run --raw and small complete outputs) skip its cost.
 let sqlite: typeof Database | undefined;
 const openDatabase = (path: string): Database.Database =>
   new (sqlite ??= createRequire(import.meta.url)('better-sqlite3') as typeof Database)(path);
-const hash = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
+const hash = sha256Hex;
 type ResearchSource = Extract<EvidenceSource, { kind: 'research' }>;
 function sameResearchSource(left: ResearchSource, right: ResearchSource): boolean {
   return left.url === right.url && left.retrievedAt === right.retrievedAt
@@ -142,7 +145,7 @@ export class EvidenceStore {
             db.prepare(`SELECT id FROM inflight WHERE id = ?
               UNION SELECT id FROM cleanup_pending WHERE id = ?
               UNION SELECT id FROM receipts WHERE id = ?`).get(id, id, id)))) continue;
-          if (this.clock() - info.mtimeMs > 600_000) this.removeFile(target);
+          if (this.clock() - info.mtimeMs > RECEIPT_TTL_MS) this.removeFile(target);
         } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
       }
     }
@@ -150,73 +153,93 @@ export class EvidenceStore {
 
   capture(input: EvidenceCapture): EvidenceReceipt {
     if (this.storageDir) this.cleanupPending();
-    if (input.source.kind === 'research') {
-      if (input.source.untrusted !== true) throw new Error('Research evidence must be marked untrusted');
-      if (!this.storageDir) for (const entry of this.entries.values()) {
-        const prior = entry.receipt.source;
-        if (entry.receipt.expiresAt > this.clock() && prior.kind === 'research'
-          && sameResearchSource(prior, input.source))
-          throw new Error('Duplicate research provenance');
-      }
-    }
-    let canonicalPath: string | undefined;
-    let sourceHash: string | undefined;
-    if (input.source.kind === 'workspace') {
-      canonicalPath = canonicalWorkspace(input.source.root, input.source.path);
-      const info = statSync(canonicalPath);
-      if (!info.isFile() || info.size > MAX_CAPTURE) throw new Error('Invalid workspace file');
-      sourceHash = hash(input.bytes);
-    }
-    if (input.source.kind === 'derived_workspace') canonicalWorkspace(input.source.root, input.source.path);
+    if (input.source.kind === 'research') this.assertResearchCaptureAllowed(input.source);
+    const { canonicalPath, sourceHash } = this.verifyCaptureSource(input);
     const sanitized = redactKnownSecrets(input.bytes);
     const bytes = Buffer.from(sanitized.bytes.subarray(0, MAX_CAPTURE));
     if (bytes.length > this.maxTotalBytes) throw new RangeError('Evidence capture exceeds total capacity');
+    const facts = {
+      redacted: Boolean(input.redacted || sanitized.redacted),
+      truncated: Boolean(input.truncated || sanitized.bytes.length > MAX_CAPTURE),
+      originalBytes: input.originalBytes === null ? null : input.originalBytes ?? input.bytes.length,
+    };
     if (input.source.kind === 'workspace') {
-      for (const entry of this.entries.values()) {
-        const prior = entry.receipt;
-        if (entry.canonicalPath !== canonicalPath || entry.sourceHash !== sourceHash || prior.expiresAt <= this.clock()
-          || prior.redacted !== Boolean(input.redacted || sanitized.redacted)
-          || prior.truncated !== Boolean(input.truncated || sanitized.bytes.length > MAX_CAPTURE)
-          || prior.originalBytes !== (input.originalBytes === null ? null : input.originalBytes ?? input.bytes.length)
-          || !entry.bytes.equals(bytes)) continue;
-        // Another process may have evicted the persisted receipt; revalidate before reuse.
-        if (this.storageDir) {
-          const active = this.withProvenanceDb(db => db.prepare('SELECT id, sha256, storedBytes, expiresAt FROM receipts WHERE id = ?').get(prior.id)) as ReceiptRow | undefined;
-          if (!active || active.sha256 !== prior.sha256 || active.expiresAt !== prior.expiresAt || !existsSync(join(this.storageDir, `${prior.id}.json`))) continue;
-        }
-        return structuredClone(prior);
-      }
+      const reusable = this.findReusableWorkspaceReceipt(canonicalPath, sourceHash, facts, bytes);
+      if (reusable) return reusable;
     }
     const receipt: EvidenceReceipt = {
-      id: randomUUID(), sha256: hash(bytes), storedBytes: bytes.length,
-      originalBytes: input.originalBytes === null ? null : input.originalBytes ?? input.bytes.length,
-      redacted: Boolean(input.redacted || sanitized.redacted), truncated: Boolean(input.truncated || sanitized.bytes.length > MAX_CAPTURE),
-      expiresAt: this.clock() + 600_000, source: structuredClone(input.source),
+      id: randomUUID(), sha256: hash(bytes), storedBytes: bytes.length, ...facts,
+      expiresAt: this.clock() + RECEIPT_TTL_MS, source: structuredClone(input.source),
     };
     const entry = { receipt, bytes, sourceHash, canonicalPath, order: ++this.nextOrder };
-    if (this.storageDir) {
-      this.reserveDiskReceipt(receipt);
-      const file = join(this.storageDir, receipt.id + '.json');
-      const temporary = join(this.storageDir, receipt.id + '.tmp');
-      try {
-        writeFileSync(temporary, JSON.stringify({ ...entry, bytes: bytes.toString('base64') }), { mode: 0o600, flag: 'wx' });
-        renameSync(temporary, file);
-        this.commitDiskReceipt(receipt);
-        if (input.source.kind === 'research') this.assertResearchClaimCurrent(input.source, receipt);
-      } catch (error) {
-        try { this.abandonReceipt(receipt); } catch { /* Durable pending cleanup is retried on the next operation. */ }
-        throw error;
-      }
-    }
+    if (this.storageDir) this.persistReceipt(entry, input.source);
     this.entries.set(receipt.id, entry);
     if (!this.storageDir) this.enforceCapacity();
     return structuredClone(receipt);
   }
 
+  /** Research evidence must be marked untrusted, and an in-memory store refuses a live duplicate of the same source. */
+  private assertResearchCaptureAllowed(source: ResearchSource): void {
+    if (source.untrusted !== true) throw new Error('Research evidence must be marked untrusted');
+    if (this.storageDir) return;
+    for (const entry of this.entries.values()) {
+      const prior = entry.receipt.source;
+      if (entry.receipt.expiresAt > this.clock() && prior.kind === 'research' && sameResearchSource(prior, source))
+        throw new Error('Duplicate research provenance');
+    }
+  }
+
+  /** Workspace captures must name a regular file inside the root; derived captures only need a valid root and path. */
+  private verifyCaptureSource(input: EvidenceCapture): { canonicalPath?: string; sourceHash?: string } {
+    if (input.source.kind === 'workspace') {
+      const canonicalPath = canonicalWorkspace(input.source.root, input.source.path);
+      const info = statSync(canonicalPath);
+      if (!info.isFile() || info.size > MAX_CAPTURE) throw new Error('Invalid workspace file');
+      return { canonicalPath, sourceHash: hash(input.bytes) };
+    }
+    if (input.source.kind === 'derived_workspace') canonicalWorkspace(input.source.root, input.source.path);
+    return {};
+  }
+
+  /** A live receipt for byte-identical content of the same unchanged file is returned instead of storing a second copy. */
+  private findReusableWorkspaceReceipt(canonicalPath: string | undefined, sourceHash: string | undefined,
+    facts: Pick<EvidenceReceipt, 'redacted' | 'truncated' | 'originalBytes'>, bytes: Buffer): EvidenceReceipt | undefined {
+    for (const entry of this.entries.values()) {
+      const prior = entry.receipt;
+      if (entry.canonicalPath !== canonicalPath || entry.sourceHash !== sourceHash || prior.expiresAt <= this.clock()
+        || prior.redacted !== facts.redacted || prior.truncated !== facts.truncated
+        || prior.originalBytes !== facts.originalBytes || !entry.bytes.equals(bytes)) continue;
+      // Another process may have evicted the persisted receipt; revalidate before reuse.
+      if (this.storageDir) {
+        const active = this.withProvenanceDb(db => db.prepare('SELECT id, sha256, storedBytes, expiresAt FROM receipts WHERE id = ?').get(prior.id)) as ReceiptRow | undefined;
+        if (!active || active.sha256 !== prior.sha256 || active.expiresAt !== prior.expiresAt || !existsSync(join(this.storageDir, `${prior.id}.json`))) continue;
+      }
+      return structuredClone(prior);
+    }
+    return undefined;
+  }
+
+  /** Reserves capacity, writes the receipt file atomically and commits it; on any failure the reservation is abandoned. */
+  private persistReceipt(entry: Entry, source: EvidenceSource): void {
+    const { receipt, bytes } = entry;
+    this.reserveDiskReceipt(receipt);
+    const file = join(this.storageDir!, receipt.id + '.json');
+    const temporary = join(this.storageDir!, receipt.id + '.tmp');
+    try {
+      writeFileSync(temporary, JSON.stringify({ ...entry, bytes: bytes.toString('base64') }), { mode: 0o600, flag: 'wx' });
+      renameSync(temporary, file);
+      this.commitDiskReceipt(receipt);
+      if (source.kind === 'research') this.assertResearchClaimCurrent(source, receipt);
+    } catch (error) {
+      try { this.abandonReceipt(receipt); } catch { /* Durable pending cleanup is retried on the next operation. */ }
+      throw error;
+    }
+  }
+
   private withProvenanceDb<T>(work: (db: Database.Database) => T): T {
     const db = openDatabase(join(this.storageDir!, 'research-provenance.sqlite'));
     try {
-      db.pragma('busy_timeout = 5000');
+      db.pragma(`busy_timeout = ${LIMITS.sqliteBusyMs}`);
       // The schema is idempotent and shared by every process; one check per store is enough.
       if (!this.schemaReady) {
         db.exec(`CREATE TABLE IF NOT EXISTS provenance (key TEXT PRIMARY KEY, id TEXT NOT NULL, sha256 TEXT NOT NULL, expiresAt INTEGER NOT NULL);

@@ -1,6 +1,6 @@
 /** Pure helpers for the workspace grep: pattern safety, glob matching and hit ranking. */
 
-export const MAX_GREP_PATTERN_CHARS = 200;
+const MAX_GREP_PATTERN_CHARS = 200;
 const MAX_UNBOUNDED_QUANTIFIERS = 5;
 
 export class UnsafePatternError extends Error {}

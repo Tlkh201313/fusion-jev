@@ -1,4 +1,5 @@
 import AjvModule, { type ValidateFunction } from 'ajv';
+import { LIMITS } from './limits.js';
 import { ESCALATE, type Candidate, type JsonObject, type JsonSchema, type JsonValue, type PreparedRequest, type ReasonCode, type RouteRequest, type ToolCall, type ToolDefinition, type FusionConfig } from './types.js';
 
 const Ajv = AjvModule as unknown as new (options: Record<string, unknown>) => {
@@ -58,7 +59,7 @@ export function prepareRequest(raw: RouteRequest, config: FusionConfig): Prepare
     candidates = enumerated ?? [];
     enumeration = enumerated === null ? 'unsupported' : 'finite';
   }
-  if (candidates.length > config.routing.maxCandidates || candidates.length > 254) return { reason: 'candidate_limit' };
+  if (candidates.length > config.routing.maxCandidates || candidates.length > LIMITS.maxCandidates) return { reason: 'candidate_limit' };
   const ids = new Set<string>();
   for (const candidate of candidates) {
     if (!plainObject(candidate) || typeof candidate.id !== 'string' || !candidate.id.trim() || candidate.id === ESCALATE || ids.has(candidate.id)
@@ -70,7 +71,7 @@ export function prepareRequest(raw: RouteRequest, config: FusionConfig): Prepare
 }
 
 /** Null means the complete space cannot be proved finite within the cap. */
-export function enumerateCandidates(tools: ToolDefinition[], limit: number,
+function enumerateCandidates(tools: ToolDefinition[], limit: number,
   validators: Map<string, ValidateFunction> | null = compileTools(tools)): Candidate[] | null {
   const result: Candidate[] = [];
   if (!validators) return null;

@@ -1,3 +1,5 @@
+import { ConfigError } from './errors.js';
+import { LIMITS } from './limits.js';
 import type { FusionConfig, ToolDefinition } from './types.js';
 
 type Environment = Record<string, string | undefined>;
@@ -5,14 +7,14 @@ type Environment = Record<string, string | undefined>;
 function integer(value: string | undefined, fallback: number, name: string, minimum = 0): number {
   if (value === undefined || value === '') return fallback;
   const parsed = Number(value);
-  if (!Number.isSafeInteger(parsed) || parsed < minimum) throw new Error(`Invalid ${name}`);
+  if (!Number.isSafeInteger(parsed) || parsed < minimum) throw new ConfigError(`Invalid ${name}`);
   return parsed;
 }
 
 function decimal(value: string | undefined, fallback: number, name: string, minimum = 0, maximum = Number.POSITIVE_INFINITY): number {
   if (value === undefined || value === '') return fallback;
   const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed < minimum || parsed > maximum) throw new Error(`Invalid ${name}`);
+  if (!Number.isFinite(parsed) || parsed < minimum || parsed > maximum) throw new ConfigError(`Invalid ${name}`);
   return parsed;
 }
 
@@ -20,13 +22,13 @@ function boolean(value: string | undefined, fallback: boolean, name: string): bo
   if (value === undefined || value === '') return fallback;
   if (value === 'true' || value === '1') return true;
   if (value === 'false' || value === '0') return false;
-  throw new Error(`Invalid ${name}`);
+  throw new ConfigError(`Invalid ${name}`);
 }
 
 function choices<T extends string>(value: string | undefined, fallback: T, allowed: readonly T[], name: string): T {
   if (value === undefined || value === '') return fallback;
   if (allowed.includes(value as T)) return value as T;
-  throw new Error(`Invalid ${name}`);
+  throw new ConfigError(`Invalid ${name}`);
 }
 
 function list(value: string | undefined): string[] {
@@ -35,14 +37,14 @@ function list(value: string | undefined): string[] {
 
 export function loadConfig(env: Environment = process.env): FusionConfig {
   if (env.JEV_BASE_URL && env.JEV_BASE_URL !== 'https://api.typesafe.ai')
-    throw new Error('JEV_BASE_URL must be https://api.typesafe.ai for official Jev');
+    throw new ConfigError('JEV_BASE_URL must be https://api.typesafe.ai for official Jev');
   if (env.JEV_MODEL && !/^(?:jev-latest|jev-preview|jev-\d+\.\d+\.\d+)$/.test(env.JEV_MODEL))
-    throw new Error('JEV_MODEL must be an official Jev alias or versioned model ID');
+    throw new ConfigError('JEV_MODEL must be an official Jev alias or versioned model ID');
   if (env.TYPESAFE_API_KEY && env.JEV_API_KEY && env.TYPESAFE_API_KEY !== env.JEV_API_KEY)
-    throw new Error('Conflicting TYPESAFE_API_KEY and JEV_API_KEY settings');
+    throw new ConfigError('Conflicting TYPESAFE_API_KEY and JEV_API_KEY settings');
   const oauthValues = [env.FUSION_OAUTH_ISSUER, env.FUSION_OAUTH_AUDIENCE, env.FUSION_OAUTH_JWKS_URL, env.FUSION_OAUTH_OWNER_SUBJECT];
   const oauthCount = oauthValues.filter(Boolean).length;
-  if (oauthCount > 0 && oauthCount !== oauthValues.length) throw new Error('OAuth settings must be complete');
+  if (oauthCount > 0 && oauthCount !== oauthValues.length) throw new ConfigError('OAuth settings must be complete');
   const config: FusionConfig = {
     mcpProfile: choices(env.FUSION_MCP_PROFILE, 'assist', ['assist', 'full'], 'FUSION_MCP_PROFILE'),
     jev: {
@@ -72,9 +74,9 @@ export function loadConfig(env: Environment = process.env): FusionConfig {
       minConfidence: decimal(env.FUSION_MIN_CONFIDENCE, 0.8, 'FUSION_MIN_CONFIDENCE', 0, 1),
       minProbability: decimal(env.FUSION_MIN_PROBABILITY, 0.7, 'FUSION_MIN_PROBABILITY', 0, 1),
       minMargin: decimal(env.FUSION_MIN_MARGIN, 0.2, 'FUSION_MIN_MARGIN', 0, 1),
-      maxCandidates: integer(env.FUSION_MAX_CANDIDATES, 254, 'FUSION_MAX_CANDIDATES', 1),
+      maxCandidates: integer(env.FUSION_MAX_CANDIDATES, LIMITS.maxCandidates, 'FUSION_MAX_CANDIDATES', 1),
       maxBatchSize: integer(env.FUSION_MAX_BATCH_SIZE, 16, 'FUSION_MAX_BATCH_SIZE', 1),
-      maxRequestBytes: integer(env.FUSION_MAX_REQUEST_BYTES, 128 * 1024, 'FUSION_MAX_REQUEST_BYTES', 1),
+      maxRequestBytes: integer(env.FUSION_MAX_REQUEST_BYTES, LIMITS.requestBytes, 'FUSION_MAX_REQUEST_BYTES', 1),
       totalTimeoutMs: integer(env.FUSION_TOTAL_TIMEOUT_MS, 20000, 'FUSION_TOTAL_TIMEOUT_MS', 1),
       maxConcurrency: integer(env.FUSION_MAX_CONCURRENCY, 4, 'FUSION_MAX_CONCURRENCY', 1),
       cacheTtlMs: integer(env.FUSION_CACHE_TTL_MS, 30000, 'FUSION_CACHE_TTL_MS'),
@@ -90,8 +92,9 @@ export function loadConfig(env: Environment = process.env): FusionConfig {
       allowUnauthenticated: boolean(env.FUSION_HTTP_ALLOW_UNAUTHENTICATED, false, 'FUSION_HTTP_ALLOW_UNAUTHENTICATED'),
       allowedHosts: list(env.FUSION_HTTP_ALLOWED_HOSTS),
       allowedOrigins: list(env.FUSION_HTTP_ALLOWED_ORIGINS),
-      maxBodyBytes: integer(env.FUSION_HTTP_MAX_BODY_BYTES, 128 * 1024, 'FUSION_HTTP_MAX_BODY_BYTES', 1),
-      maxResearchBodyBytes: integer(env.FUSION_HTTP_MAX_BODY_BYTES, 2 * 1024 * 1024, 'FUSION_HTTP_MAX_BODY_BYTES', 1),
+      maxBodyBytes: integer(env.FUSION_HTTP_MAX_BODY_BYTES, LIMITS.httpBodyBytes, 'FUSION_HTTP_MAX_BODY_BYTES', 1),
+      // Both limits read FUSION_HTTP_MAX_BODY_BYTES (no separate research variable exists); only the unset defaults differ.
+      maxResearchBodyBytes: integer(env.FUSION_HTTP_MAX_BODY_BYTES, LIMITS.researchBodyBytes, 'FUSION_HTTP_MAX_BODY_BYTES', 1),
       publicUrl: env.FUSION_PUBLIC_URL,
       oauth: oauthCount ? {
         issuer: env.FUSION_OAUTH_ISSUER!, audience: env.FUSION_OAUTH_AUDIENCE!,
@@ -101,13 +104,13 @@ export function loadConfig(env: Environment = process.env): FusionConfig {
     },
     catalog: parseCatalog(env.FUSION_CATALOG_JSON),
   };
-  if (config.routing.maxCandidates > 254) throw new Error('FUSION_MAX_CANDIDATES cannot exceed 254');
+  if (config.routing.maxCandidates > LIMITS.maxCandidates) throw new ConfigError('FUSION_MAX_CANDIDATES cannot exceed 254');
   return config;
 }
 
 function parseCatalog(raw: string | undefined): ToolDefinition[] {
   if (!raw) return [];
   const value: unknown = JSON.parse(raw);
-  if (!Array.isArray(value)) throw new Error('FUSION_CATALOG_JSON must contain an array');
+  if (!Array.isArray(value)) throw new ConfigError('FUSION_CATALOG_JSON must contain an array');
   return value as ToolDefinition[];
 }

@@ -1,8 +1,9 @@
-import { createHash } from 'node:crypto';
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { isAbsolute, join, sep } from 'node:path';
+import { LIMITS } from './limits.js';
+import { sha256Hex } from './util/hash.js';
 
 /**
  * Private evidence storage. On Windows the cache directory must carry an ACL that grants access
@@ -16,16 +17,18 @@ import { isAbsolute, join, sep } from 'node:path';
  * so a verification whose answer is no longer needed can be killed safely unless a repair began.
  */
 
-const DEFAULT_TIMEOUT_MS = 10_000;
-const RETRY_FACTOR = 3;
+const RETRY_FACTOR = LIMITS.aclRetryFactor;
+
+/** SIDs allowed on private storage besides the current user: LocalSystem and BUILTIN\Administrators. Every script and check here uses these. */
+const SYSTEM_SID = 'S-1-5-18';
+const ADMINISTRATORS_SID = 'S-1-5-32-544';
 
 /** First-attempt limit for the PowerShell verification; the single retry gets three times as long. */
-export function aclTimeoutMs(): number {
+function aclTimeoutMs(): number {
   const value = process.env.FUSION_ACL_TIMEOUT_MS;
-  return value && /^[1-9]\d{0,8}$/.test(value) ? Number(value) : DEFAULT_TIMEOUT_MS;
+  return value && /^[1-9]\d{0,8}$/.test(value) ? Number(value) : LIMITS.aclTimeoutMs;
 }
 
-const sha = (text: string) => createHash('sha256').update(text).digest('hex');
 const systemExecutable = (...parts: string[]): string => {
   // FUSION_SYSTEM_ROOT is a test seam: a child Node cannot start under a fake SystemRoot, but can run with a fake lookup root.
   const file = join(process.env.FUSION_SYSTEM_ROOT ?? process.env.SystemRoot ?? 'C:/Windows', 'System32', ...parts);
@@ -33,6 +36,16 @@ const systemExecutable = (...parts: string[]): string => {
   return file;
 };
 const powershellPath = () => systemExecutable('WindowsPowerShell', 'v1.0', 'powershell.exe');
+
+/**
+ * The Windows PowerShell binary for the configuration privacy checks and the process-tree helpers.
+ * It honours SystemRoot only: the FUSION_SYSTEM_ROOT lookup seam is for the evidence ACL verification alone.
+ */
+export function windowsPowerShell(): string {
+  const file = join(process.env.SystemRoot ?? 'C:/Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+  if (!isAbsolute(file)) throw new Error('Windows system executable path must be absolute');
+  return file;
+}
 const lockPath = (directory: string) => `${directory}.acl-repair.lock`;
 
 const SCRIPT = `
@@ -43,14 +56,14 @@ $lock = $target + '.acl-repair.lock'
 $mutex = [System.Threading.Mutex]::new($false, $env:FUSION_EVIDENCE_ACL_MUTEX)
 $held = $false
 try {
-try { $got = $mutex.WaitOne(10000) } catch [System.Threading.AbandonedMutexException] { $got = $true }
+try { $got = $mutex.WaitOne(${LIMITS.aclMutexWaitMs}) } catch [System.Threading.AbandonedMutexException] { $got = $true }
 if (-not $got) { throw 'Timed out waiting for evidence ACL repair' }
 $held = $true
 function Test-PrivateAcl([string]$item, [bool]$isDir) {
   if ($isDir) { $acl = [System.IO.Directory]::GetAccessControl($item) }
   else { $acl = [System.IO.File]::GetAccessControl($item) }
   $current = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
-  $allowed = @($current, 'S-1-5-18', 'S-1-5-32-544')
+  $allowed = @($current, '${SYSTEM_SID}', '${ADMINISTRATORS_SID}')
   $selfAllowed = $false
   foreach ($rule in $acl.Access) {
     if ($rule.AccessControlType -ne [System.Security.AccessControl.AccessControlType]::Allow) { continue }
@@ -135,7 +148,7 @@ if ($wasTrusted) {
 
 function scriptEnv(path: string, directory: boolean): NodeJS.ProcessEnv {
   return { ...process.env, FUSION_EVIDENCE_ACL_PATH: path, FUSION_EVIDENCE_ACL_DIRECTORY: directory ? '1' : '0',
-    FUSION_EVIDENCE_ACL_MUTEX: `Local\\FusionEvidenceAcl-${sha(path.toLowerCase()).slice(0, 32)}` };
+    FUSION_EVIDENCE_ACL_MUTEX: `Local\\FusionEvidenceAcl-${sha256Hex(path.toLowerCase()).slice(0, 32)}` };
 }
 const POWERSHELL_ARGS = ['-NoProfile', '-NonInteractive', '-Command', SCRIPT];
 
@@ -152,7 +165,7 @@ function failure(reason: unknown): Error {
 // ---------------------------------------------------------------------------------------------
 // Stage 1: read-only proof that the directory and its files are already private.
 
-const ALWAYS_TRUSTED = new Set(['SY', 'BA', 'S-1-5-18', 'S-1-5-32-544']);
+const ALWAYS_TRUSTED = new Set(['SY', 'BA', SYSTEM_SID, ADMINISTRATORS_SID]);
 
 /** Returns true only when every allow entry names the current user, SYSTEM or Administrators and the user has one. */
 export function sddlIsPrivate(sddl: string, currentSid: string): boolean {
@@ -241,7 +254,7 @@ function fastCheckSync(directory: string): boolean {
     if (!plan) return false;
     let whoami = '';
     for (const command of plan.commands) {
-      const result = spawnSync(command.file, command.args, { windowsHide: true, encoding: 'utf8', timeout: 5000 });
+      const result = spawnSync(command.file, command.args, { windowsHide: true, encoding: 'utf8', timeout: LIMITS.aclFastCheckMs });
       if (command.file.endsWith('whoami.exe')) whoami = result.stdout ?? '';
       else if (result.status !== 0) return false;
     }
@@ -258,8 +271,8 @@ function fastCheckAsync(directory: string, signal: AbortSignal): Promise<boolean
   const run = (command: FastPlan['commands'][number]) => new Promise<{ ok: boolean; stdout: string }>(resolve => {
     let stdout = '';
     const child = spawn(command.file, command.args, { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'], signal });
-    const timer = setTimeout(() => child.kill(), 5000);
-    child.stdout.on('data', (chunk: Buffer) => { if (stdout.length < 4096) stdout += chunk.toString('utf8'); });
+    const timer = setTimeout(() => child.kill(), LIMITS.aclFastCheckMs);
+    child.stdout.on('data', (chunk: Buffer) => { if (stdout.length < LIMITS.helperOutputChars) stdout += chunk.toString('utf8'); });
     child.once('error', () => { clearTimeout(timer); resolve({ ok: false, stdout }); });
     child.once('close', code => { clearTimeout(timer); resolve({ ok: code === 0, stdout }); });
   });
@@ -275,7 +288,7 @@ function fastCheckAsync(directory: string, signal: AbortSignal): Promise<boolean
 // Stage 2: the authoritative PowerShell script.
 
 /** Synchronous verification for callers that cannot await (constructors, MCP startup). */
-export function verifyDirectoryAclSync(directory: string): boolean {
+function verifyDirectoryAclSync(directory: string): boolean {
   if (fastCheckSync(directory)) return true;
   let limit = aclTimeoutMs();
   for (let attempt = 0; ; attempt++) {
@@ -353,7 +366,7 @@ export class AclVerification {
           child.stdin!.write('GO\n');
         }
       });
-      child.stderr!.on('data', (chunk: Buffer) => { if (stderr.length < 4096) stderr += chunk.toString('utf8'); });
+      child.stderr!.on('data', (chunk: Buffer) => { if (stderr.length < LIMITS.helperOutputChars) stderr += chunk.toString('utf8'); });
       child.once('error', error => { clearTimeout(timer); resolve({ kind: 'failed', reason: error.message }); });
       child.once('close', code => {
         clearTimeout(timer);
@@ -443,5 +456,58 @@ export class StorageVerification {
   async discard(): Promise<void> {
     if (this.outcome) { try { await this.outcome; } catch { /* Reported by whoever awaited ready(). */ } return; }
     await this.verification?.abandon();
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Configuration path privacy (provider env file, user config directory).
+
+const PRIVACY_SCRIPT = `
+$ErrorActionPreference = 'Stop'
+$target = $env:FUSION_PRIVATE_PATH
+$directory = $env:FUSION_PRIVATE_DIRECTORY -eq '1'
+$acl = if ($directory) { [System.IO.Directory]::GetAccessControl($target) } else { [System.IO.File]::GetAccessControl($target) }
+$current = [System.Security.Principal.WindowsIdentity]::GetCurrent().User
+if ($env:FUSION_PRIVATE_PROTECT -eq '1') {
+  $acl.SetAccessRuleProtection($true, $false)
+  foreach ($rule in @($acl.Access)) { $acl.RemoveAccessRuleAll($rule) | Out-Null }
+  $inheritance = if ($directory) { [System.Security.AccessControl.InheritanceFlags]::ContainerInherit -bor [System.Security.AccessControl.InheritanceFlags]::ObjectInherit } else { [System.Security.AccessControl.InheritanceFlags]::None }
+  $acl.AddAccessRule([System.Security.AccessControl.FileSystemAccessRule]::new($current, [System.Security.AccessControl.FileSystemRights]::FullControl, $inheritance, [System.Security.AccessControl.PropagationFlags]::None, [System.Security.AccessControl.AccessControlType]::Allow))
+  if ($directory) { [System.IO.Directory]::SetAccessControl($target, $acl) } else { [System.IO.File]::SetAccessControl($target, $acl) }
+}
+$allowed = @($current.Value, '${SYSTEM_SID}', '${ADMINISTRATORS_SID}')
+$parent = $env:FUSION_PRIVATE_PARENT -eq '1'
+# Reject rights that permit creation, modification, deletion or ACL takeover.
+$writeRights = 2 -bor 4 -bor 16 -bor 64 -bor 256 -bor 65536 -bor 262144 -bor 524288
+$selfAllowed = $false
+foreach ($rule in $acl.Access) {
+  if ($rule.AccessControlType -ne [System.Security.AccessControl.AccessControlType]::Allow) { continue }
+  if (($rule.PropagationFlags -band [System.Security.AccessControl.PropagationFlags]::InheritOnly) -ne 0) { continue }
+  $sid = $rule.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value
+  if ($allowed -notcontains $sid -and (-not $parent -or ([int]$rule.FileSystemRights -band $writeRights) -ne 0)) { throw "Shared access ($sid rights $([int]$rule.FileSystemRights))" }
+  if ($sid -eq $current.Value) { $selfAllowed = $true }
+}
+if (-not $selfAllowed -and -not $parent) { throw 'Current user lacks access' }
+$owner = $acl.GetOwner([System.Security.Principal.SecurityIdentifier]).Value
+# Elevated Windows administrators create objects owned by the Administrators group rather than their own SID.
+# That group is already an accepted principal in the ACL, so accept it as owner only for an administrator caller.
+$administrator = [System.Security.Principal.WindowsPrincipal]::new([System.Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([System.Security.Principal.SecurityIdentifier]::new('${ADMINISTRATORS_SID}'))
+$ownerOk = if ($parent) { $allowed -contains $owner } else { $owner -eq $current.Value -or ($administrator -and $owner -eq '${ADMINISTRATORS_SID}') }
+if (-not $ownerOk) { throw "Wrong owner ($owner)" }
+[Console]::Out.WriteLine('PRIVATE')
+`;
+
+/**
+ * Verifies (and, with `protect`, first restricts) the Windows ACL of a configuration path; throws unless it is private to the
+ * current user. With `parent`, other principals may hold read-only access to a directory that merely contains the path.
+ */
+export function assertWindowsPrivacy(path: string, directory: boolean, protect: boolean, parent = false): void {
+  const result = spawnSync(windowsPowerShell(), ['-NoProfile', '-NonInteractive', '-Command', PRIVACY_SCRIPT], {
+    windowsHide: true, encoding: 'utf8', timeout: LIMITS.privacyCheckMs,
+    env: { ...process.env, FUSION_PRIVATE_PATH: path, FUSION_PRIVATE_DIRECTORY: directory ? '1' : '0',
+      FUSION_PRIVATE_PROTECT: protect ? '1' : '0', FUSION_PRIVATE_PARENT: parent ? '1' : '0' } });
+  if (result.status !== 0 || result.stdout.trim() !== 'PRIVATE') {
+    const reason = String(result.stderr ?? '').split(/\r?\n/, 1)[0]?.trim();
+    throw new Error('Configuration path permissions must be private to the current user' + (reason ? ` (${reason})` : ''));
   }
 }

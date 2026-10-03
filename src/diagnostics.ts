@@ -1,3 +1,7 @@
+import { basename, dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { sha256Hex } from './util/hash.js';
+
 export interface Diagnostic {
   severity: 'error' | 'warning' | 'info'; message: string; file?: string; line?: number; column?: number;
   evidenceId: string; startByte: number; endByte: number;
@@ -97,10 +101,10 @@ export function discoverChecks(root: string, manifest: ReadonlyArray<{ path: str
   for (const { path, content } of manifest) {
     const name = basename(path);
     if (!['package.json', 'pyproject.toml', 'pytest.ini', 'Cargo.toml', 'go.mod', 'CMakeLists.txt', 'Makefile'].includes(name)) continue;
-    const sourceSha256 = createHash('sha256').update(content).digest('hex');
+    const sourceSha256 = sha256Hex(content);
     const add = (label: string, argv: string[]) => checks.push({ sourcePath: path, label, argv,
       cwd: resolve(root, dirname(path)), sourceSha256, requiresApproval: true,
-      id: createHash('sha256').update(JSON.stringify([path, sourceSha256, argv])).digest('hex').slice(0, 24) });
+      id: sha256Hex(JSON.stringify([path, sourceSha256, argv])).slice(0, 24) });
     if (name === 'package.json') {
       try {
         const data = JSON.parse(content);
@@ -125,7 +129,4 @@ export function discoverChecks(root: string, manifest: ReadonlyArray<{ path: str
   }
   return checks;
 }
-import { createHash } from 'node:crypto';
-import { basename, dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 
