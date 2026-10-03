@@ -1,8 +1,18 @@
-import test from 'node:test';
+import test, { type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { StorageVerification, parseIcaclsSave, sddlIsPrivate } from '../src/acl.js';
@@ -65,6 +75,175 @@ function brokenPowerShellRoot(base: string): string {
   return root;
 }
 
+// Post-failure diagnostics only: re-run read-only helpers without exposing output, SIDs or paths.
+// These are snapshots after the original failure, not evidence that the original helper run succeeded.
+function aclFastCheckDiagnostics(directory: string, root: string, env: NodeJS.ProcessEnv): Record<string, unknown> {
+  const temporary = mkdtempSync(join(tmpdir(), 'fusion-acl-test-diagnostic-'));
+  const report: Record<string, unknown> = { cleanupFailed: false };
+  try {
+    const entries = readdirSync(directory, { withFileTypes: true });
+    const names = entries.filter((entry) => entry.isFile() && !entry.isSymbolicLink()).map((entry) => entry.name);
+    const run = (name: string, args: string[], helperRoot = root, helperEnv = env) => {
+      const started = Date.now();
+      const result = spawnSync(join(helperRoot, 'System32', name), args, {
+        windowsHide: true,
+        encoding: 'utf8',
+        timeout: 5000,
+        maxBuffer: 4096,
+        env: helperEnv,
+      });
+      const code = (result.error as NodeJS.ErrnoException | undefined)?.code;
+      return {
+        result,
+        summary: {
+          exitCode: result.status,
+          errorPresent: Boolean(result.error),
+          errorCode: code === undefined ? null : /^[A-Z0-9_]+$/.test(code) ? code : 'other',
+          durationMs: Date.now() - started,
+          stdoutPresent: Boolean(result.stdout),
+          stderrPresent: Boolean(result.stderr),
+        },
+      };
+    };
+    const directorySave = join(temporary, 'directory.txt');
+    const filesSave = join(temporary, 'files.txt');
+    const directoryResult = run('icacls.exe', [directory, '/save', directorySave]);
+    const filesResult = names.length ? run('icacls.exe', [join(directory, '*'), '/save', filesSave, '/c']) : undefined;
+    const whoami = run('whoami.exe', ['/user', '/fo', 'csv', '/nh']);
+    const sid = /^"[^"]*","(S-1-5-21-[\d-]+|S-1-5-\d+(?:-\d+)*)"\s*$/.exec(
+      String(whoami.result.stdout ?? '').trim(),
+    )?.[1];
+    const saved = (path: string) => {
+      const present = existsSync(path);
+      const bytes = present ? readFileSync(path) : undefined;
+      const descriptors = bytes ? parseIcaclsSave(bytes) : undefined;
+      const trustees = [...(descriptors?.values() ?? [])].map((sddl) =>
+        (sddl.match(/\([^()]*\)/g) ?? []).flatMap((ace) => {
+          const fields = ace.slice(1, -1).split(';');
+          return fields.length === 6 && fields[0] === 'A' ? [fields[5]!] : [];
+        }),
+      );
+      return {
+        descriptors,
+        summary: {
+          saveExists: present,
+          saveBytes: bytes?.length ?? 0,
+          parseValid: Boolean(descriptors),
+          entryCount: descriptors?.size ?? 0,
+          allContainDacl: Boolean(descriptors?.size) && [...descriptors!.values()].every((sddl) => sddl.includes('D:')),
+          directCurrentSidMatch: Boolean(sid && trustees.length && trustees.every((allowed) => allowed.includes(sid))),
+          allowTrusteeCategories: [
+            ...new Set(
+              trustees
+                .flat()
+                .map((trustee) => (trustee === sid ? 'currentSid' : /^[A-Z]{2}$/.test(trustee) ? trustee : 'otherSid')),
+            ),
+          ],
+          privateForCurrentSid: Boolean(
+            sid && descriptors?.size && [...descriptors.values()].every((sddl) => sddlIsPrivate(sddl, sid)),
+          ),
+        },
+      };
+    };
+    const dir = saved(directorySave);
+    const files = filesResult ? saved(filesSave) : undefined;
+    const realRoot = process.env.SystemRoot ?? 'C:/Windows';
+    const real = join(realRoot, 'System32');
+    // Independent, read-only native ACL translation distinguishes full SID trustees from SDDL aliases.
+    const identityScript = `
+$ErrorActionPreference = 'Stop'
+$acl = [System.IO.Directory]::GetAccessControl($env:FUSION_TEST_ACL_PATH)
+$current = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+$sids = @($acl.Access | Where-Object { $_.AccessControlType -eq 'Allow' } | ForEach-Object { $_.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value })
+$self = @($sids | Where-Object { $_ -eq $current }).Count -gt 0
+$other = @($sids | Where-Object { $_ -ne $current -and $_ -ne 'S-1-5-18' -and $_ -ne 'S-1-5-32-544' }).Count -gt 0
+@{ whoamiMatchesCurrentIdentity = $env:FUSION_TEST_ACL_SID -eq $current; translatedIdentityMatch = $self; translatedAclPrivate = $self -and -not $other } | ConvertTo-Json -Compress
+`;
+    const nativeIdentity = run(
+      join('WindowsPowerShell', 'v1.0', 'powershell.exe'),
+      ['-NoProfile', '-NonInteractive', '-Command', identityScript],
+      realRoot,
+      { ...process.env, FUSION_TEST_ACL_PATH: directory, FUSION_TEST_ACL_SID: sid ?? '' },
+    );
+    let identity: Record<string, unknown> = {};
+    try {
+      const parsed: unknown = JSON.parse(String(nativeIdentity.result.stdout ?? ''));
+      if (parsed && typeof parsed === 'object') identity = parsed as Record<string, unknown>;
+    } catch {
+      /* Only format validity is reported. */
+    }
+    let resourceSummary: Record<string, unknown>;
+    try {
+      const languages = readdirSync(real, { withFileTypes: true }).filter((entry) => entry.isDirectory());
+      const resources = (name: string) => {
+        const installed = languages.filter((entry) => existsSync(join(real, entry.name, `${name}.exe.mui`)));
+        return {
+          installed: installed.length,
+          copied: installed.filter((entry) => existsSync(join(root, 'System32', entry.name, `${name}.exe.mui`))).length,
+        };
+      };
+      resourceSummary = { icacls: resources('icacls'), whoami: resources('whoami') };
+    } catch {
+      resourceSummary = { lookupFailed: true };
+    }
+    return Object.assign(report, {
+      plainFileCount: names.length,
+      nonPlainEntryCount: entries.length - names.length,
+      repairLockPresent: existsSync(`${directory}.acl-repair.lock`),
+      directorySave: { ...directoryResult.summary, ...dir.summary },
+      filesSave: filesResult
+        ? {
+            ...filesResult.summary,
+            ...files!.summary,
+            allPlainFilesMapped: names.every((name) => files!.descriptors?.has(name)),
+          }
+        : { required: false },
+      whoami: { ...whoami.summary, sidFormatValid: Boolean(sid) },
+      nativeAclIdentity: {
+        ...nativeIdentity.summary,
+        formatValid: ['whoamiMatchesCurrentIdentity', 'translatedIdentityMatch', 'translatedAclPrivate'].every(
+          (key) => typeof identity[key] === 'boolean',
+        ),
+        whoamiMatchesCurrentIdentity: identity.whoamiMatchesCurrentIdentity === true,
+        translatedIdentityMatch: identity.translatedIdentityMatch === true,
+        translatedAclPrivate: identity.translatedAclPrivate === true,
+      },
+      resources: resourceSummary,
+    });
+  } finally {
+    try {
+      rmSync(temporary, { recursive: true, force: true });
+    } catch {
+      report.cleanupFailed = true;
+    }
+  }
+}
+
+async function withAclFailureDiagnostics<T>(
+  t: Pick<TestContext, 'diagnostic'>,
+  directory: string,
+  root: string,
+  env: NodeJS.ProcessEnv,
+  work: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await work();
+  } catch (error) {
+    let details: string;
+    try {
+      details = JSON.stringify(aclFastCheckDiagnostics(directory, root, env));
+    } catch {
+      details = '{"diagnosticFailed":true}';
+    }
+    try {
+      t.diagnostic(`ACL fast-check after failure: ${details}`);
+    } catch {
+      // Even a diagnostic reporter failure must not replace the original test failure.
+    }
+    throw error;
+  }
+}
+
 function withEnv<T>(values: Record<string, string>, work: () => T): T {
   const saved = Object.fromEntries(Object.keys(values).map((key) => [key, process.env[key]]));
   Object.assign(process.env, values);
@@ -108,15 +287,17 @@ test('an already private cache is proven private without starting PowerShell', {
   t.after(() => rm(home, { recursive: true, force: true }));
   const fake = brokenPowerShellRoot(home);
   const storageDir = join(home, 'evidence');
-  // First open creates the directory (inheriting the private fixture ACL) and stores a receipt.
-  const store = withEnv({ SystemRoot: fake }, () => new EvidenceStore({ storageDir }));
-  const receipt = store.capture({
-    source: { kind: 'command', cwd: home, argv: ['x'], channel: 'stdout' },
-    bytes: Buffer.from('kept'),
+  await withAclFailureDiagnostics(t, storageDir, fake, cliEnv(home, { SystemRoot: fake }), async () => {
+    // First open creates the directory (inheriting the private fixture ACL) and stores a receipt.
+    const store = withEnv({ SystemRoot: fake }, () => new EvidenceStore({ storageDir }));
+    const receipt = store.capture({
+      source: { kind: 'command', cwd: home, argv: ['x'], channel: 'stdout' },
+      bytes: Buffer.from('kept'),
+    });
+    // A second open must still succeed with a PowerShell that always fails: only the icacls check can have vouched for it.
+    const reopened = withEnv({ SystemRoot: fake }, () => new EvidenceStore({ storageDir }));
+    assert.equal((await reopened.expand({ id: receipt.id })).status, 'ok');
   });
-  // A second open must still succeed with a PowerShell that always fails: only the icacls check can have vouched for it.
-  const reopened = withEnv({ SystemRoot: fake }, () => new EvidenceStore({ storageDir }));
-  assert.equal((await reopened.expand({ id: receipt.id })).status, 'ok');
 });
 
 test(
@@ -215,7 +396,10 @@ test('evidence recovery verifies a private cache without PowerShell', { skip: !w
   assert.equal(created.status, 7, created.stderr);
   const id = /stdout=([0-9a-f-]{36})/.exec(created.stdout)?.[1];
   assert.ok(id, created.stdout);
-  const recovered = runCli(home, { FUSION_SYSTEM_ROOT: brokenPowerShellRoot(home) }, 'evidence', id, '--raw');
-  assert.equal(recovered.status, 0, recovered.stderr);
-  assert.equal(recovered.stdout, 'x'.repeat(3000));
+  const fake = brokenPowerShellRoot(home);
+  await withAclFailureDiagnostics(t, cacheDir(home), fake, cliEnv(home, { FUSION_SYSTEM_ROOT: fake }), async () => {
+    const recovered = runCli(home, { FUSION_SYSTEM_ROOT: fake }, 'evidence', id, '--raw');
+    assert.equal(recovered.status, 0, recovered.stderr);
+    assert.equal(recovered.stdout, 'x'.repeat(3000));
+  });
 });
