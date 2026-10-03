@@ -39,7 +39,7 @@ Recovery returns what was retained: it cannot bring back bytes that were clipped
 
 ## Inspection
 
-`fusion_inspect` accepts up to eight independent actions per call (file reads, literal searches, Git status/diff/log). Results are bounded and report omissions explicitly. Git inspection reports submodule commit pointers and dirty summaries rather than recursing into submodule contents. `fusion_assist` takes a short goal and picks among prebuilt inspection actions; obvious reads run locally without calling Jev.
+`fusion_inspect` accepts up to eight independent actions per call (file reads, literal searches, Git status/diff/log). Results are bounded and report omissions explicitly. Git inspection reports submodule commit-pointer changes and skips dirty-submodule scans and file contents. `fusion_assist` takes a short goal and picks among prebuilt inspection actions; obvious reads run locally without calling Jev.
 
 ## Trust boundaries
 

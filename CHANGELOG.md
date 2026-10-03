@@ -32,6 +32,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Fixed
 
+- Fixed workspace Git status/diff executing configured clean/process filters. Inspection now bounds configuration lookup, disables effective clean/smudge/process drivers and required settings, and refuses unsafe filter names or failed lookup. This covers stable configuration; concurrent introduction of a new driver between lookup and execution remains unsupported. Global filters are also bypassed, so results compare raw working-tree contents. Dirty submodule contents are no longer scanned; submodule commit changes remain visible.
 - `git log -p` and `git diff` output no longer produces false diagnostics from diff content.
 
 ### Removed

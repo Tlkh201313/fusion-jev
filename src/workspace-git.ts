@@ -8,6 +8,7 @@
 import { constants, accessSync, existsSync, lstatSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { realpath } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
+import { isUtf8 } from 'node:buffer';
 import { delimiter, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import {
   EXCLUDED,
@@ -38,6 +39,115 @@ function gitPathspecs(scope: string): string[] {
       `:(exclude,icase,glob)**/${name}/**`,
     ]),
   ];
+}
+
+// Inspect names only: config lookup executes no filters and never captures their
+// command values. Includes retain their source scope, so even a global include
+// may load repository-controlled definitions. Disable every effective driver;
+// repository attributes can also select an otherwise inherited global driver.
+// This protects stable configuration, not concurrent introduction of new names
+// between this lookup and the inspection command.
+async function gitFilterOverrides(
+  executable: string,
+  repositoryArgs: string[],
+  cwd: string,
+  signal: AbortSignal,
+): Promise<string[]> {
+  const fail = () => new WorkspaceError('GIT_FAILED', 'Git configuration cannot be safely inspected');
+  checkSignal(signal);
+  const listed = await new Promise<{ status: number; stdout: Buffer }>((resolve, reject) => {
+    const child = spawn(
+      executable,
+      [
+        ...repositoryArgs,
+        '--no-pager',
+        'config',
+        '--includes',
+        '--show-scope',
+        '--null',
+        '--name-only',
+        '--get-regexp',
+        '^filter\\.',
+      ],
+      {
+        cwd,
+        windowsHide: true,
+        // GIT_CONFIG redirects only `git config`, not status/diff. Inspect exactly
+        // the sources those commands use; retain their global/system/command env.
+        env: { ...process.env, GIT_CONFIG: undefined, GIT_OPTIONAL_LOCKS: '0' },
+        stdio: ['ignore', 'pipe', 'pipe'],
+      },
+    );
+    const chunks: Buffer[] = [];
+    let stdoutBytes = 0;
+    let stderrBytes = 0;
+    let settled = false;
+    let stoppedError: WorkspaceError | undefined;
+    const finish = (error?: WorkspaceError, status?: number | null) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      signal.removeEventListener('abort', abort);
+      if (signal.aborted) reject(abortError(signal));
+      else if (error || (status !== 0 && status !== 1)) reject(error ?? fail());
+      else resolve({ status, stdout: Buffer.concat(chunks) });
+    };
+    const stop = (error: WorkspaceError) => {
+      if (settled || stoppedError) return;
+      stoppedError = error;
+      clearTimeout(timeout);
+      child.kill('SIGKILL');
+      child.stdout.destroy();
+      child.stderr.destroy();
+      // Await close before settling so the process releases its repository cwd
+      // and pipe handles; cancellation still leaves the event loop responsive.
+    };
+    const abort = () => stop(abortError(signal));
+    const timeout = setTimeout(() => stop(fail()), 5000);
+    timeout.unref();
+    child.stdout.on('data', (chunk: Buffer) => {
+      if (stoppedError) return;
+      stdoutBytes += chunk.length;
+      if (stdoutBytes > MAX_GIT_BYTES) stop(fail());
+      else chunks.push(chunk);
+    });
+    // Discard diagnostics without allowing an unbounded stderr pipe.
+    child.stderr.on('data', (chunk: Buffer) => {
+      if (stoppedError) return;
+      stderrBytes += chunk.length;
+      if (stderrBytes > MAX_GIT_BYTES) stop(fail());
+    });
+    child.once('error', () => stop(fail()));
+    child.once('close', (status) => finish(stoppedError, status));
+    signal.addEventListener('abort', abort, { once: true });
+    if (signal.aborted) abort();
+  }).catch((error: unknown) => {
+    if (error instanceof WorkspaceError) throw error;
+    throw fail();
+  });
+  if (!isUtf8(listed.stdout)) throw fail();
+  if (listed.status === 1) {
+    if (listed.stdout.length) throw fail();
+    return [];
+  }
+  const fields = listed.stdout.toString('utf8').split('\0');
+  if (fields.pop() !== '' || fields.length % 2 !== 0) throw fail();
+  const names = new Set<string>();
+  for (let index = 0; index < fields.length; index += 2) {
+    if (!['system', 'global', 'local', 'worktree', 'command'].includes(fields[index]!)) throw fail();
+    const match = /^filter\.(.*)\.(clean|smudge|process|required)$/s.exec(fields[index + 1]!);
+    if (!match) continue;
+    const name = match[1]!;
+    // Git permits '=' in subsection names, but -c splits its key at the first
+    // '='. Refuse inspection rather than silently overriding a different key.
+    if (name.includes('=')) throw fail();
+    names.add(name);
+  }
+  return [...names].flatMap((name) => [
+    ...['clean', 'smudge', 'process'].flatMap((key) => ['-c', `filter.${name}.${key}=`]),
+    '-c',
+    `filter.${name}.required=false`,
+  ]);
 }
 
 function gitExecutable(root: string): string {
@@ -239,20 +349,33 @@ export async function runGitCommand(
   }
   const operation =
     command === 'status'
-      ? ['status', '--short', '--untracked-files=normal']
+      ? ['status', '--short', '--untracked-files=normal', '--ignore-submodules=dirty']
       : command === 'diff'
-        ? ['diff', '--no-ext-diff', '--no-textconv', '--submodule=short', ...(options.staged ? ['--cached'] : [])]
+        ? [
+            'diff',
+            '--no-ext-diff',
+            '--no-textconv',
+            '--submodule=short',
+            '--ignore-submodules=dirty',
+            ...(options.staged ? ['--cached'] : []),
+          ]
         : ['log', '-5', '--oneline', '--no-show-signature'];
+  const executable = gitExecutable(root);
+  const repositoryArgs = gitRepositoryArgs(root);
+  const filterOverrides = command === 'log' ? [] : await gitFilterOverrides(executable, repositoryArgs, root, signal);
+  checkSignal(signal);
   const args = [
     ...gitRepositoryArgs(root),
     '-c',
     'core.fsmonitor=false',
+    '-c',
+    'status.submoduleSummary=false',
+    ...filterOverrides,
     '--no-pager',
     ...operation,
     '--',
     ...gitPathspecs(options.path ?? '.'),
   ];
-  const executable = gitExecutable(root);
   let output: { text: string; truncated: boolean; bytes: Buffer };
   try {
     output = await new Promise<{ text: string; truncated: boolean; bytes: Buffer }>((resolve, reject) => {
