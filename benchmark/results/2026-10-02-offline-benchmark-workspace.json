@@ -1,0 +1,30 @@
+{
+  "kind": "local-workspace-efficiency",
+  "fixture": "four 40-line files",
+  "providerCalls": 0,
+  "note": "Bytes are measured serialized MCP output, not billed tokens or subscription savings. Local warm-file timings exclude host reasoning and external transport. No output cache.",
+  "results": {
+    "previousDuplicateEncoding": {
+      "responseBytes": 20825,
+      "evidencePreserved": true,
+      "responseByteReductionPercent": 0,
+      "reconstructedEncodingOnly": true
+    },
+    "compactDirect": {
+      "responseBytes": 8905,
+      "evidencePreserved": true,
+      "responseByteReductionPercent": 57.2,
+      "p50Ms": 5.5,
+      "p95Ms": 6.44,
+      "toolCalls": 4
+    },
+    "inspectionBatch": {
+      "responseBytes": 10424,
+      "evidencePreserved": true,
+      "responseByteReductionPercent": 49.9,
+      "p50Ms": 13.1,
+      "p95Ms": 14,
+      "toolCalls": 1
+    }
+  }
+}

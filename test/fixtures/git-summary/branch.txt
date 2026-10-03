@@ -1,0 +1,6 @@
+* docs/launch-ready-packaging
+  main
+  remotes/origin/HEAD -> origin/main
+  remotes/origin/ccr-d4be230b-3v7xgm
+  remotes/origin/docs/launch-ready-packaging
+  remotes/origin/main

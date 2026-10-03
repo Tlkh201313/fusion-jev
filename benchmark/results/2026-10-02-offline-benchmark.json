@@ -1,0 +1,51 @@
+{
+  "mode": "offline-simulation",
+  "note": "Synthetic decisions and token/cost figures; no provider accuracy, task success, or savings claim.",
+  "report": {
+    "fusion": {
+      "cases": 3,
+      "coverage": 0.6666666666666666,
+      "abstentions": 1,
+      "selectedCallAccuracy": 1,
+      "decisionAccuracy": 1,
+      "taskSuccess": null,
+      "latencyP50Ms": 17,
+      "latencyP95Ms": 52,
+      "attempts": 4,
+      "inputTokens": 72,
+      "outputTokens": 20,
+      "estimatedCostUsd": 0.00016,
+      "costUncertain": false
+    },
+    "gpt-only": {
+      "cases": 3,
+      "coverage": 0.6666666666666666,
+      "abstentions": 1,
+      "selectedCallAccuracy": 1,
+      "decisionAccuracy": 1,
+      "taskSuccess": null,
+      "latencyP50Ms": 18,
+      "latencyP95Ms": 18,
+      "attempts": 3,
+      "inputTokens": 108,
+      "outputTokens": 24,
+      "estimatedCostUsd": 0.00030000000000000003,
+      "costUncertain": false
+    },
+    "jev-only": {
+      "cases": 3,
+      "coverage": 0.6666666666666666,
+      "abstentions": 1,
+      "selectedCallAccuracy": 1,
+      "decisionAccuracy": 1,
+      "taskSuccess": null,
+      "latencyP50Ms": 16,
+      "latencyP95Ms": 17,
+      "attempts": 3,
+      "inputTokens": 36,
+      "outputTokens": 12,
+      "estimatedCostUsd": 0.00006000000000000001,
+      "costUncertain": false
+    }
+  }
+}

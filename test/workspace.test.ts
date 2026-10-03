@@ -17,17 +17,27 @@ function selecting(action: string, seen: RouteRequest[]): RoutingService {
   return {
     async route(request): Promise<RouteResult> {
       seen.push(request);
-      const candidate = request.candidates?.find(item => item.tool === action);
-      return { decision: candidate
-        ? { status: 'selected', source: 'jev', candidateId: candidate.id,
-          call: { tool: candidate.tool, arguments: candidate.arguments } }
-        : { status: 'escalate', source: 'host', reason: 'model_escalated' }, usage: [], latencyMs: 1 };
+      const candidate = request.candidates?.find((item) => item.tool === action);
+      return {
+        decision: candidate
+          ? {
+              status: 'selected',
+              source: 'jev',
+              candidateId: candidate.id,
+              call: { tool: candidate.tool, arguments: candidate.arguments },
+            }
+          : { status: 'escalate', source: 'host', reason: 'model_escalated' },
+        usage: [],
+        latencyMs: 1,
+      };
     },
-    async routeBatch() { throw new Error('not used'); },
+    async routeBatch() {
+      throw new Error('not used');
+    },
   };
 }
 
-test('inspection distinguishes scoped staged and unstaged Git changes', async t => {
+test('inspection distinguishes scoped staged and unstaged Git changes', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'fusion staged git '));
   t.after(() => rm(root, { recursive: true, force: true }));
   const git = (...args: string[]) => {
@@ -36,18 +46,34 @@ test('inspection distinguishes scoped staged and unstaged Git changes', async t 
   };
   git('init');
   await writeFile(join(root, 'note.txt'), 'original\n');
-  git('add', 'note.txt'); git('-c', 'user.name=Fusion Test', '-c', 'user.email=fusion@example.invalid', 'commit', '-m', 'fixture');
-  await writeFile(join(root, 'note.txt'), 'staged\n'); git('add', 'note.txt');
+  git('add', 'note.txt');
+  git('-c', 'user.name=Fusion Test', '-c', 'user.email=fusion@example.invalid', 'commit', '-m', 'fixture');
+  await writeFile(join(root, 'note.txt'), 'staged\n');
+  git('add', 'note.txt');
   await writeFile(join(root, 'note.txt'), 'unstaged\n');
   const router = selecting('unknown', []);
-  const server = createFusionMcpServer({ router, config: loadConfig({}), workspace: new WorkspaceService(root, router) });
+  const server = createFusionMcpServer({
+    router,
+    config: loadConfig({}),
+    workspace: new WorkspaceService(root, router),
+  });
   const client = new Client({ name: 'staged-git', version: '1' });
   const [left, right] = InMemoryTransport.createLinkedPair();
-  await server.connect(left); await client.connect(right);
-  t.after(async () => { await client.close(); await server.close(); });
-  const result = await client.callTool({ name: 'fusion_inspect', arguments: { requests: [
-    { action: 'git_diff', staged: true, path: 'note.txt' }, { action: 'git_diff', path: 'note.txt' },
-  ] } });
+  await server.connect(left);
+  await client.connect(right);
+  t.after(async () => {
+    await client.close();
+    await server.close();
+  });
+  const result = await client.callTool({
+    name: 'fusion_inspect',
+    arguments: {
+      requests: [
+        { action: 'git_diff', staged: true, path: 'note.txt' },
+        { action: 'git_diff', path: 'note.txt' },
+      ],
+    },
+  });
   assert.equal(result.isError, undefined);
   const text = (result.content as any)[0].text;
   assert.match(text, /\+staged/);
@@ -57,7 +83,7 @@ test('inspection distinguishes scoped staged and unstaged Git changes', async t 
   assert.ok(!refs[1].receipt.source.argv.includes('--cached'));
 });
 
-test('repository search respects Git ignore rules and keeps explicitly unignored sources', async t => {
+test('repository search respects Git ignore rules and keeps explicitly unignored sources', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'fusion git ignore '));
   t.after(() => rm(root, { recursive: true, force: true }));
   assert.equal(spawnSync('git', ['init'], { cwd: root }).status, 0);
@@ -67,22 +93,32 @@ test('repository search respects Git ignore rules and keeps explicitly unignored
   await writeFile(join(root, 'generated', 'keep.ts'), 'needle kept\n');
   const service = new WorkspaceService(root, selecting('unknown', []));
   const result = await service.search('needle');
-  assert.deepEqual(result.matches.map(item => item.path), ['generated/keep.ts']);
+  assert.deepEqual(
+    result.matches.map((item) => item.path),
+    ['generated/keep.ts'],
+  );
   assert.equal((result as any).ignoreRules, 'git');
   await writeFile(join(root, 'fresh.ts'), 'needle new\n');
   const refreshed = await service.search('needle');
-  assert.ok(refreshed.matches.some(item => item.path === 'fresh.ts'), 'inventory revalidates after new files');
+  assert.ok(
+    refreshed.matches.some((item) => item.path === 'fresh.ts'),
+    'inventory revalidates after new files',
+  );
 });
 
-test('scoped Git diff includes deleted files while retaining path boundaries', async t => {
+test('scoped Git diff includes deleted files while retaining path boundaries', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'fusion deleted git '));
   const external = await mkdtemp(join(tmpdir(), 'fusion outside git '));
-  t.after(async () => { await rm(root, { recursive: true, force: true }); await rm(external, { recursive: true, force: true }); });
+  t.after(async () => {
+    await rm(root, { recursive: true, force: true });
+    await rm(external, { recursive: true, force: true });
+  });
   const git = (...args: string[]) => assert.equal(spawnSync('git', args, { cwd: root }).status, 0);
   git('init');
   await mkdir(join(root, 'nested'));
   await writeFile(join(root, 'nested', 'deleted.txt'), 'original\n');
-  git('add', '.'); git('-c', 'user.name=Fusion Test', '-c', 'user.email=fusion@example.invalid', 'commit', '-m', 'fixture');
+  git('add', '.');
+  git('-c', 'user.name=Fusion Test', '-c', 'user.email=fusion@example.invalid', 'commit', '-m', 'fixture');
   await rm(join(root, 'nested'), { recursive: true });
   git('add', '-u');
   const service = new WorkspaceService(root, selecting('unknown', []));
@@ -99,7 +135,7 @@ test('scoped Git diff includes deleted files while retaining path boundaries', a
   }
 });
 
-test('workspace tool advertises owned actions and Jev chooses a validated read', async t => {
+test('workspace tool advertises owned actions and Jev chooses a validated read', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'fusion-workspace-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   await writeFile(join(root, 'README.md'), 'hello workspace\n');
@@ -109,63 +145,116 @@ test('workspace tool advertises owned actions and Jev chooses a validated read',
   const server = createFusionMcpServer({ router: selecting('read_file', seen), config, workspace });
   const client = new Client({ name: 'workspace-test', version: '1' });
   const [left, right] = InMemoryTransport.createLinkedPair();
-  await server.connect(left); await client.connect(right);
-  t.after(async () => { await client.close(); await server.close(); });
+  await server.connect(left);
+  await client.connect(right);
+  t.after(async () => {
+    await client.close();
+    await server.close();
+  });
   const advertised = (await client.listTools()).tools;
-  assert.deepEqual(advertised.map(tool => tool.name),
-    ['fusion_repo_overview', 'fusion_inspect', 'fusion_list_files', 'fusion_read_file', 'fusion_search_text', 'fusion_git_status',
-      'fusion_git_diff', 'fusion_git_log', 'fusion_workspace', 'fusion_choose', 'fusion_choose_batch', 'fusion_route', 'fusion_route_batch', 'fusion_assist', 'fusion_evidence']);
-  assert.equal(new Set(advertised.map(tool => tool.title)).size, advertised.length);
-  const result = await client.callTool({ name: 'fusion_workspace', arguments: { task: 'Read the README', path: 'README.md' } });
+  assert.deepEqual(
+    advertised.map((tool) => tool.name),
+    [
+      'fusion_repo_overview',
+      'fusion_inspect',
+      'fusion_list_files',
+      'fusion_read_file',
+      'fusion_search_text',
+      'fusion_git_status',
+      'fusion_git_diff',
+      'fusion_git_log',
+      'fusion_workspace',
+      'fusion_choose',
+      'fusion_choose_batch',
+      'fusion_route',
+      'fusion_route_batch',
+      'fusion_assist',
+      'fusion_evidence',
+    ],
+  );
+  assert.equal(new Set(advertised.map((tool) => tool.title)).size, advertised.length);
+  const result = await client.callTool({
+    name: 'fusion_workspace',
+    arguments: { task: 'Read the README', path: 'README.md' },
+  });
   assert.equal((result.structuredContent as any).route.decision.source, 'jev');
   assert.deepEqual((result.structuredContent as any).execution, {
-    status: 'executed', output: { path: 'README.md', content: 'hello workspace\n', truncated: false },
+    status: 'executed',
+    output: { path: 'README.md', content: 'hello workspace\n', truncated: false },
   });
   assert.equal(seen.length, 1);
-  assert.deepEqual(seen[0]!.candidates?.map(candidate => candidate.tool), ['read_file']);
+  assert.deepEqual(
+    seen[0]!.candidates?.map((candidate) => candidate.tool),
+    ['read_file'],
+  );
 });
 
-test('named reads skip inference and page output without losing line numbers', async t => {
+test('named reads skip inference and page output without losing line numbers', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'fusion-workspace-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   await writeFile(join(root, 'notes.txt'), 'one\ntwo\nthree\nfour\n');
   const seen: RouteRequest[] = [];
   const router = selecting('read_file', seen);
-  const server = createFusionMcpServer({ router, config: loadConfig({}),
-    workspace: new WorkspaceService(root, router) });
+  const server = createFusionMcpServer({
+    router,
+    config: loadConfig({}),
+    workspace: new WorkspaceService(root, router),
+  });
   const client = new Client({ name: 'named-tools-test', version: '1' });
   const [left, right] = InMemoryTransport.createLinkedPair();
-  await server.connect(left); await client.connect(right);
-  t.after(async () => { await client.close(); await server.close(); });
-  const result = await client.callTool({ name: 'fusion_read_file', arguments: { path: 'notes.txt', startLine: 2, maxLines: 2, format: 'structured' } });
+  await server.connect(left);
+  await client.connect(right);
+  t.after(async () => {
+    await client.close();
+    await server.close();
+  });
+  const result = await client.callTool({
+    name: 'fusion_read_file',
+    arguments: { path: 'notes.txt', startLine: 2, maxLines: 2, format: 'structured' },
+  });
   assert.equal(result.isError, undefined);
   assert.deepEqual((result.structuredContent as any).lines, [
-    { number: 2, text: 'two' }, { number: 3, text: 'three' },
+    { number: 2, text: 'two' },
+    { number: 3, text: 'three' },
   ]);
   assert.equal((result.structuredContent as any).nextLine, 4);
   assert.equal(seen.length, 0);
 });
 
-test('repository overview gathers bounded entrypoint evidence in one MCP call without Jev or secrets', async t => {
+test('repository overview gathers bounded entrypoint evidence in one MCP call without Jev or secrets', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'fusion-overview-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   await mkdir(join(root, 'src'));
   await mkdir(join(root, 'src', 'providers'));
   await mkdir(join(root, 'docs'));
   await writeFile(join(root, 'README.md'), '# Example project\nThis is the purpose.\n');
-  await writeFile(join(root, 'docs', 'design.md'), Array.from({ length: 70 }, (_, i) => `Design note ${i + 1}`).join('\n'));
+  await writeFile(
+    join(root, 'docs', 'design.md'),
+    Array.from({ length: 70 }, (_, i) => `Design note ${i + 1}`).join('\n'),
+  );
   await writeFile(join(root, 'package.json'), '{"main":"src/index.ts"}\n');
   await writeFile(join(root, 'src', 'index.ts'), 'export const ready = true;\n');
-  await writeFile(join(root, 'src', 'router.ts'), `export class ExampleRouter {\n${Array.from({ length: 10 }, (_, i) => `  async route${i}() { return true; }`).join('\n')}\n}\n`);
+  await writeFile(
+    join(root, 'src', 'router.ts'),
+    `export class ExampleRouter {\n${Array.from({ length: 10 }, (_, i) => `  async route${i}() { return true; }`).join('\n')}\n}\n`,
+  );
   await writeFile(join(root, 'src', 'providers', 'jev.ts'), 'export class ExampleProvider {}\n');
   await writeFile(join(root, '.env'), 'SECRET_SHOULD_NOT_APPEAR=1\n');
   const seen: RouteRequest[] = [];
   const router = selecting('unknown', seen);
-  const server = createFusionMcpServer({ router, config: loadConfig({}), workspace: new WorkspaceService(root, router) });
+  const server = createFusionMcpServer({
+    router,
+    config: loadConfig({}),
+    workspace: new WorkspaceService(root, router),
+  });
   const client = new Client({ name: 'overview-test', version: '1' });
   const [left, right] = InMemoryTransport.createLinkedPair();
-  await server.connect(left); await client.connect(right);
-  t.after(async () => { await client.close(); await server.close(); });
+  await server.connect(left);
+  await client.connect(right);
+  t.after(async () => {
+    await client.close();
+    await server.close();
+  });
   const result = await client.callTool({ name: 'fusion_repo_overview', arguments: { detail: 'deep', maxChars: 4000 } });
   const content = (result.content as any)[0].text as string;
   assert.match(content, /Example project/);
@@ -184,7 +273,10 @@ test('repository overview gathers bounded entrypoint evidence in one MCP call wi
   assert.equal(coverage.kind, 'selective-map');
   assert.equal(coverage.sourceFilesDiscovered, 3);
   const routerCoverage = coverage.sourceOutlines.find((item: any) => item.path === 'src/router.ts');
-  assert.ok(routerCoverage.symbolsFound > routerCoverage.symbolsShown, 'omitted symbols are reported independently of output clipping');
+  assert.ok(
+    routerCoverage.symbolsFound > routerCoverage.symbolsShown,
+    'omitted symbols are reported independently of output clipping',
+  );
   assert.ok(routerCoverage.codeWindows.length > 0);
   assert.ok(coverage.documentExcerpts.some((item: any) => item.path === 'docs/design.md' && item.continues));
   const roomy = await client.callTool({ name: 'fusion_repo_overview', arguments: { detail: 'deep', maxChars: 8000 } });
@@ -196,37 +288,68 @@ test('repository overview gathers bounded entrypoint evidence in one MCP call wi
   const interruptedService = new WorkspaceService(root, router);
   t.mock.method(interruptedService, 'read', async (path: string) => {
     controller.abort();
-    return { path, startLine: 1, lines: [{ number: 1, text: 'partial evidence' }], nextLine: null, shortenedLines: false };
+    return {
+      path,
+      startLine: 1,
+      lines: [{ number: 1, text: 'partial evidence' }],
+      nextLine: null,
+      shortenedLines: false,
+    };
   });
-  const interruptedServer = createFusionMcpServer({ router, config: loadConfig({}), workspace: interruptedService, signal: controller.signal });
+  const interruptedServer = createFusionMcpServer({
+    router,
+    config: loadConfig({}),
+    workspace: interruptedService,
+    signal: controller.signal,
+  });
   const interruptedClient = new Client({ name: 'overview-cancel-test', version: '1' });
   const [cancelLeft, cancelRight] = InMemoryTransport.createLinkedPair();
-  await interruptedServer.connect(cancelLeft); await interruptedClient.connect(cancelRight);
-  t.after(async () => { await interruptedClient.close(); await interruptedServer.close(); });
+  await interruptedServer.connect(cancelLeft);
+  await interruptedClient.connect(cancelRight);
+  t.after(async () => {
+    await interruptedClient.close();
+    await interruptedServer.close();
+  });
   const cancelled = await interruptedClient.callTool({ name: 'fusion_repo_overview', arguments: {} });
   assert.equal(cancelled.isError, true);
   assert.equal((cancelled.structuredContent as any).error.code, 'CANCELLED');
 });
 
-test('oversized MCP result requests are capped and paginated without failing the inspection batch', async t => {
+test('oversized MCP result requests are capped and paginated without failing the inspection batch', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'fusion-limits-'));
   t.after(() => rm(root, { recursive: true, force: true }));
-  await Promise.all(Array.from({ length: 60 }, (_, i) => writeFile(join(root, `file-${String(i).padStart(2, '0')}.txt`), 'needle\n')));
+  await Promise.all(
+    Array.from({ length: 60 }, (_, i) => writeFile(join(root, `file-${String(i).padStart(2, '0')}.txt`), 'needle\n')),
+  );
   const seen: RouteRequest[] = [];
   const router = selecting('unknown', seen);
-  const server = createFusionMcpServer({ router, config: loadConfig({}), workspace: new WorkspaceService(root, router) });
+  const server = createFusionMcpServer({
+    router,
+    config: loadConfig({}),
+    workspace: new WorkspaceService(root, router),
+  });
   const client = new Client({ name: 'limit-test', version: '1' });
   const [left, right] = InMemoryTransport.createLinkedPair();
-  await server.connect(left); await client.connect(right);
-  t.after(async () => { await client.close(); await server.close(); });
+  await server.connect(left);
+  await client.connect(right);
+  t.after(async () => {
+    await client.close();
+    await server.close();
+  });
 
   const direct = await client.callTool({ name: 'fusion_list_files', arguments: { maxResults: 500 } });
   assert.equal(direct.isError, undefined);
   assert.match((direct.content as any)[0].text, /LIMIT APPLIED: maxResults=50/);
   assert.match((direct.content as any)[0].text, /nextOffset=50/);
-  const batch = await client.callTool({ name: 'fusion_inspect', arguments: { requests: [
-    { action: 'list', maxResults: 500 }, { action: 'search', query: 'needle', maxResults: 1000 },
-  ] } });
+  const batch = await client.callTool({
+    name: 'fusion_inspect',
+    arguments: {
+      requests: [
+        { action: 'list', maxResults: 500 },
+        { action: 'search', query: 'needle', maxResults: 1000 },
+      ],
+    },
+  });
   assert.equal(batch.isError, undefined);
   assert.deepEqual((batch.structuredContent as any).failed, []);
   assert.equal(((batch.content as any)[0].text as string).match(/LIMIT APPLIED/g)?.length, 2);
@@ -234,14 +357,16 @@ test('oversized MCP result requests are capped and paginated without failing the
   assert.equal(seen.length, 0);
 });
 
-test('standard overview retains module edges and symbols, scans each source once, and leaves deep excerpts opt-in', async t => {
+test('standard overview retains module edges and symbols, scans each source once, and leaves deep excerpts opt-in', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'fusion-standard-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   await mkdir(join(root, 'src'));
   await writeFile(join(root, 'README.md'), '# Example\nA routing example.');
   const fixtures = {
     'src/index.ts': 'export { Router } from "./router.js";\n',
-    'src/router.ts': 'import type { Request } from "./types.js";\nexport class Router {\n  async route(request: Request) {\n    return request;\n  }\n}\n' + '\n'.repeat(350),
+    'src/router.ts':
+      'import type { Request } from "./types.js";\nexport class Router {\n  async route(request: Request) {\n    return request;\n  }\n}\n' +
+      '\n'.repeat(350),
     'src/types.ts': 'export interface Request { task: string }\n',
   };
   await Promise.all(Object.entries(fixtures).map(([path, text]) => writeFile(join(root, path), text)));
@@ -252,8 +377,12 @@ test('standard overview retains module edges and symbols, scans each source once
   const server = createFusionMcpServer({ router, config: loadConfig({}), workspace });
   const client = new Client({ name: 'standard-map-test', version: '1' });
   const [left, right] = InMemoryTransport.createLinkedPair();
-  await server.connect(left); await client.connect(right);
-  t.after(async () => { await client.close(); await server.close(); });
+  await server.connect(left);
+  await client.connect(right);
+  t.after(async () => {
+    await client.close();
+    await server.close();
+  });
   const standard = await client.callTool({ name: 'fusion_repo_overview', arguments: {} });
   const text = (standard.content as any)[0].text as string;
   const metadata = standard.structuredContent as any;
@@ -275,7 +404,7 @@ test('standard overview retains module edges and symbols, scans each source once
   assert.ok(JSON.stringify(standard).length < JSON.stringify(deep).length);
 });
 
-test('separate MCP calls can execute concurrently on one connection', { timeout: 3000 }, async t => {
+test('separate MCP calls can execute concurrently on one connection', { timeout: 3000 }, async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'fusion-parallel-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const router = selecting('unknown', []);
@@ -291,32 +420,55 @@ test('separate MCP calls can execute concurrently on one connection', { timeout:
   const server = createFusionMcpServer({ router, config: loadConfig({}), workspace });
   const client = new Client({ name: 'parallel-test', version: '1' });
   const [left, right] = InMemoryTransport.createLinkedPair();
-  await server.connect(left); await client.connect(right);
-  t.after(async () => { release.resolve(); await client.close(); await server.close(); });
-  const calls = ['one.txt', 'two.txt'].map(path => client.callTool({ name: 'fusion_read_file', arguments: { path } }));
+  await server.connect(left);
+  await client.connect(right);
+  t.after(async () => {
+    release.resolve();
+    await client.close();
+    await server.close();
+  });
+  const calls = ['one.txt', 'two.txt'].map((path) =>
+    client.callTool({ name: 'fusion_read_file', arguments: { path } }),
+  );
   await started.promise;
   release.resolve();
   const results = await Promise.all(calls);
-  assert.ok(results.every(result => !result.isError));
+  assert.ok(results.every((result) => !result.isError));
   assert.match((results[0]!.content as any)[0].text, /one.txt/);
   assert.match((results[1]!.content as any)[0].text, /two.txt/);
 });
 
-test('named tools return stable errors and use the requested workspace root', async t => {
+test('named tools return stable errors and use the requested workspace root', async (t) => {
   const first = await mkdtemp(join(tmpdir(), 'fusion-first-'));
   const second = await mkdtemp(join(tmpdir(), 'fusion-second-'));
-  t.after(async () => { await rm(first, { recursive: true, force: true }); await rm(second, { recursive: true, force: true }); });
+  t.after(async () => {
+    await rm(first, { recursive: true, force: true });
+    await rm(second, { recursive: true, force: true });
+  });
   await writeFile(join(first, 'one.txt'), 'first');
   await writeFile(join(second, 'two.txt'), 'second');
   const router = selecting('unknown', []);
-  const server = createFusionMcpServer({ router, config: loadConfig({}),
-    workspaceFactory: root => new WorkspaceService(root ?? first, router) });
+  const server = createFusionMcpServer({
+    router,
+    config: loadConfig({}),
+    workspaceFactory: (root) => new WorkspaceService(root ?? first, router),
+  });
   const client = new Client({ name: 'roots-test', version: '1' });
   const [left, right] = InMemoryTransport.createLinkedPair();
-  await server.connect(left); await client.connect(right);
-  t.after(async () => { await client.close(); await server.close(); });
-  const listed = await client.callTool({ name: 'fusion_list_files', arguments: { root: second, format: 'structured' } });
-  assert.deepEqual((listed.structuredContent as any).entries.map((entry: any) => entry.name), ['two.txt']);
+  await server.connect(left);
+  await client.connect(right);
+  t.after(async () => {
+    await client.close();
+    await server.close();
+  });
+  const listed = await client.callTool({
+    name: 'fusion_list_files',
+    arguments: { root: second, format: 'structured' },
+  });
+  assert.deepEqual(
+    (listed.structuredContent as any).entries.map((entry: any) => entry.name),
+    ['two.txt'],
+  );
   const badRoot = await client.callTool({ name: 'fusion_list_files', arguments: { root: 'relative/path' } });
   assert.equal((badRoot.structuredContent as any).error.code, 'INVALID_PATH');
   const denied = await client.callTool({ name: 'fusion_read_file', arguments: { root: second, path: '../one.txt' } });
@@ -328,42 +480,58 @@ test('named tools return stable errors and use the requested workspace root', as
   assert.equal((git.structuredContent as any).error.code, 'GIT_FAILED');
 });
 
-test('named listing pages and cancellation stops direct file reads', async t => {
+test('named listing pages and cancellation stops direct file reads', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'fusion-workspace-'));
   t.after(() => rm(root, { recursive: true, force: true }));
-  await Promise.all(['a.txt', 'b.txt', 'c.txt'].map(name => writeFile(join(root, name), name)));
+  await Promise.all(['a.txt', 'b.txt', 'c.txt'].map((name) => writeFile(join(root, name), name)));
   const service = new WorkspaceService(root, selecting('unknown', []));
   const first = await service.list('.', 2);
-  assert.deepEqual(first.entries.map(entry => entry.name), ['a.txt', 'b.txt']);
+  assert.deepEqual(
+    first.entries.map((entry) => entry.name),
+    ['a.txt', 'b.txt'],
+  );
   assert.equal(first.nextOffset, 2);
   const second = await service.list('.', 2, first.nextOffset!);
-  assert.deepEqual(second.entries.map(entry => entry.name), ['c.txt']);
+  assert.deepEqual(
+    second.entries.map((entry) => entry.name),
+    ['c.txt'],
+  );
   assert.equal(second.nextOffset, null);
-  const abort = new AbortController(); abort.abort();
+  const abort = new AbortController();
+  abort.abort();
   await assert.rejects(service.read('a.txt', 1, 10, abort.signal), (error: any) => error.code === 'CANCELLED');
   const timedOut = AbortSignal.abort(new DOMException('deadline', 'TimeoutError'));
   await assert.rejects(service.read('a.txt', 1, 10, timedOut), (error: any) => error.code === 'TIMEOUT');
 });
 
-test('direct reads reject binary and oversized files with actionable codes', async t => {
+test('direct reads reject binary and oversized files with actionable codes', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'fusion-workspace-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   await writeFile(join(root, 'binary.bin'), Buffer.from([0, 1, 2]));
   const large = await open(join(root, 'large.txt'), 'w');
-  try { await large.truncate(8 * 1024 * 1024 + 1); } finally { await large.close(); }
+  try {
+    await large.truncate(8 * 1024 * 1024 + 1);
+  } finally {
+    await large.close();
+  }
   const service = new WorkspaceService(root, selecting('unknown', []));
   await assert.rejects(service.read('binary.bin'), (error: any) => error.code === 'NOT_TEXT_FILE');
-  await assert.rejects(service.read('large.txt'), (error: any) => error.code === 'FILE_TOO_LARGE');
+  // Oversize files stream instead of failing with FILE_TOO_LARGE; this sparse file is NUL bytes, so it is rejected as non-text.
+  await assert.rejects(service.read('large.txt'), (error: any) => error.code === 'NOT_TEXT_FILE');
+  await assert.rejects(service.snapshot('large.txt'), (error: any) => error.code === 'FILE_TOO_LARGE');
 });
 
-test('large Git diff returns a bounded partial result instead of a buffer error', async t => {
+test('large Git diff returns a bounded partial result instead of a buffer error', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'fusion-git-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   assert.equal(spawnSync('git', ['init', '-q', root]).status, 0);
   const file = join(root, 'large.txt');
   await writeFile(file, 'old\n');
   assert.equal(spawnSync('git', ['-C', root, 'add', 'large.txt']).status, 0);
-  await writeFile(file, Array.from({ length: 3000 }, (_, i) => `new line ${i} with enough text to exceed the limit`).join('\n'));
+  await writeFile(
+    file,
+    Array.from({ length: 3000 }, (_, i) => `new line ${i} with enough text to exceed the limit`).join('\n'),
+  );
   const output = await new WorkspaceService(root, selecting('unknown', [])).git('diff');
   assert.equal(output.truncated, true);
   assert.ok(output.text.length > 0 && Buffer.byteLength(output.text) <= 32 * 1024);
@@ -371,7 +539,7 @@ test('large Git diff returns a bounded partial result instead of a buffer error'
   assert.equal(log.text, '');
 });
 
-test('Git status, diff and log stay inside a nested workspace root', async t => {
+test('Git status, diff and log stay inside a nested workspace root', async (t) => {
   const repository = await mkdtemp(join(tmpdir(), 'fusion-git-root-'));
   const root = join(repository, 'allowed');
   t.after(() => rm(repository, { recursive: true, force: true }));
@@ -380,10 +548,18 @@ test('Git status, diff and log stay inside a nested workspace root', async t => 
   assert.equal(git('init', '-q').status, 0);
   await writeFile(join(repository, 'outside.txt'), 'before outside\n');
   assert.equal(git('add', 'outside.txt').status, 0);
-  assert.equal(git('-c', 'user.name=Fusion Test', '-c', 'user.email=fusion@example.test', 'commit', '-qm', 'outside baseline').status, 0);
+  assert.equal(
+    git('-c', 'user.name=Fusion Test', '-c', 'user.email=fusion@example.test', 'commit', '-qm', 'outside baseline')
+      .status,
+    0,
+  );
   await writeFile(join(root, 'inside.txt'), 'before inside\n');
   assert.equal(git('add', 'allowed/inside.txt').status, 0);
-  assert.equal(git('-c', 'user.name=Fusion Test', '-c', 'user.email=fusion@example.test', 'commit', '-qm', 'inside baseline').status, 0);
+  assert.equal(
+    git('-c', 'user.name=Fusion Test', '-c', 'user.email=fusion@example.test', 'commit', '-qm', 'inside baseline')
+      .status,
+    0,
+  );
   await writeFile(join(repository, 'outside.txt'), 'after outside\n');
   await writeFile(join(root, 'inside.txt'), 'after inside\n');
   await writeFile(join(repository, 'outside-untracked.txt'), 'outside\n');
@@ -401,7 +577,7 @@ test('Git status, diff and log stay inside a nested workspace root', async t => 
   assert.doesNotMatch(log.text, /outside baseline/);
 });
 
-test('workspace search and listing stay inside the root and return bounded results', async t => {
+test('workspace search and listing stay inside the root and return bounded results', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'fusion-workspace-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   await mkdir(join(root, 'src'));
@@ -413,37 +589,58 @@ test('workspace search and listing stay inside the root and return bounded resul
   const found = await search.run({ task: 'Find needle', path: 'src', query: 'needle', maxResults: 1 });
   assert.equal(found.execution?.status, 'executed');
   assert.equal((found.execution as any).output.matches.length, 1);
-  assert.deepEqual(seen[0]!.candidates?.map(candidate => candidate.tool), ['list_files', 'search_text']);
+  assert.deepEqual(
+    seen[0]!.candidates?.map((candidate) => candidate.tool),
+    ['list_files', 'search_text'],
+  );
   const list = new WorkspaceService(root, selecting('list_files', []));
   const listed = await list.run({ task: 'Show files', path: 'src' });
-  assert.deepEqual((listed.execution as any).output.entries.map((entry: any) => entry.name), ['one.ts', 'two.ts']);
+  assert.deepEqual(
+    (listed.execution as any).output.entries.map((entry: any) => entry.name),
+    ['one.ts', 'two.ts'],
+  );
   await assert.rejects(search.run({ task: 'Escape', path: '../outside', query: 'x' }), /workspace path/i);
   await assert.rejects(search.run({ task: 'Read secret', path: 'src/.env.local' }), /workspace path/i);
 });
 
-test('host escalation never executes a workspace action', async t => {
+test('host escalation never executes a workspace action', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'fusion-workspace-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   await writeFile(join(root, 'note.txt'), 'keep local');
-  const result = await new WorkspaceService(root, selecting('unknown', [])).run({ task: 'Read note', path: 'note.txt' });
+  const result = await new WorkspaceService(root, selecting('unknown', [])).run({
+    task: 'Read note',
+    path: 'note.txt',
+  });
   assert.equal(result.route.decision.status, 'escalate');
   assert.equal(result.execution, undefined);
 });
 
-test('a selected call outside the server-owned candidate set never executes', async t => {
+test('a selected call outside the server-owned candidate set never executes', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'fusion-workspace-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   await writeFile(join(root, 'note.txt'), 'keep local');
   const router: RoutingService = {
-    async route() { return { decision: { status: 'selected', source: 'jev', candidateId: 'forged',
-      call: { tool: 'read_file', arguments: { path: 'note.txt' } } }, usage: [], latencyMs: 1 }; },
-    async routeBatch() { throw new Error('not used'); },
+    async route() {
+      return {
+        decision: {
+          status: 'selected',
+          source: 'jev',
+          candidateId: 'forged',
+          call: { tool: 'read_file', arguments: { path: 'note.txt' } },
+        },
+        usage: [],
+        latencyMs: 1,
+      };
+    },
+    async routeBatch() {
+      throw new Error('not used');
+    },
   };
   const result = await new WorkspaceService(root, router).run({ task: 'Read note', path: 'note.txt' });
   assert.deepEqual(result.execution, { status: 'invalid' });
 });
 
-test('Jev can choose a fixed read-only git command without accepting shell text', async t => {
+test('Jev can choose a fixed read-only git command without accepting shell text', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'fusion-git-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   assert.equal(spawnSync('git', ['init', '-q', root]).status, 0);
@@ -453,20 +650,28 @@ test('Jev can choose a fixed read-only git command without accepting shell text'
   const result = await workspace.run({ task: 'Show git status' });
   assert.equal(result.execution?.status, 'executed');
   assert.match((result.execution as any).output.text, /note\.txt/);
-  assert.deepEqual(seen[0]!.candidates?.map(candidate => candidate.tool),
-    ['list_files', 'git_status', 'git_diff', 'git_log']);
-  assert.ok(seen[0]!.tools.every(tool => tool.readOnly === true));
+  assert.deepEqual(
+    seen[0]!.candidates?.map((candidate) => candidate.tool),
+    ['list_files', 'git_status', 'git_diff', 'git_log'],
+  );
+  assert.ok(seen[0]!.tools.every((tool) => tool.readOnly === true));
 });
 
-test('search pages within a single file, includes context and matches beyond old clipping boundary', async t => {
+test('search pages within a single file, includes context and matches beyond old clipping boundary', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'fusion-search-'));
   t.after(() => rm(root, { recursive: true, force: true }));
-  await writeFile(join(root, 'source.txt'), ['before', 'needle first', 'between', 'x'.repeat(600) + 'other needle', 'after'].join('\n'));
+  await writeFile(
+    join(root, 'source.txt'),
+    ['before', 'needle first', 'between', 'x'.repeat(600) + 'other needle', 'after'].join('\n'),
+  );
   const service = new WorkspaceService(root, selecting('unknown', []));
   const first = await service.search(['needle', 'other'], '.', 1, undefined, { contextLines: 1 });
   assert.equal(first.nextOffset, 1);
   assert.equal(first.truncated, true);
-  assert.deepEqual(first.matches[0]!.context?.map(l => l.line), [1, 2, 3]);
+  assert.deepEqual(
+    first.matches[0]!.context?.map((l) => l.line),
+    [1, 2, 3],
+  );
   const next = await service.search(['needle', 'other'], '.', 1, undefined, { offset: first.nextOffset! });
   assert.equal(next.nextOffset, null);
   assert.equal(next.truncated, false);
@@ -477,7 +682,7 @@ test('search pages within a single file, includes context and matches beyond old
   await assert.rejects(service.search('x', '.', 10, AbortSignal.abort()), (e: any) => e.code === 'CANCELLED');
 });
 
-test('search reports skipped content and reading rejects invalid UTF-8 past the first chunk', async t => {
+test('search reports skipped content and reading rejects invalid UTF-8 past the first chunk', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'fusion-invalid-text-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   await writeFile(join(root, 'invalid.txt'), Buffer.concat([Buffer.from('a'.repeat(20000)), Buffer.from([0xff])]));
@@ -486,12 +691,16 @@ test('search reports skipped content and reading rejects invalid UTF-8 past the 
   const service = new WorkspaceService(root, selecting('unknown', []));
   await assert.rejects(service.read('invalid.txt'), (e: any) => e.code === 'NOT_TEXT_FILE');
   const result = await service.search('needle');
-  assert.equal(result.matches.length, 0);
-  assert.equal(result.skippedFiles, 3);
+  // The 300 KB file is over the per-file limit but is now scanned within the byte budget instead of skipped.
+  assert.deepEqual(
+    result.matches.map((match) => match.path),
+    ['oversize.txt'],
+  );
+  assert.equal(result.skippedFiles, 2);
   assert.equal(result.truncated, true);
 });
 
-test('compact MCP and inspection preserve evidence once, order, failures and request deduplication', async t => {
+test('compact MCP and inspection preserve evidence once, order, failures and request deduplication', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'fusion-inspect-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   await writeFile(join(root, 'source.txt'), 'unique evidence\nneedle\nnext\n');
@@ -500,36 +709,58 @@ test('compact MCP and inspection preserve evidence once, order, failures and req
   const service = new WorkspaceService(root, router);
   let reads = 0;
   const original = service.read.bind(service);
-  t.mock.method(service, 'read', async (...args: Parameters<typeof service.read>) => { reads++; return original(...args); });
+  t.mock.method(service, 'read', async (...args: Parameters<typeof service.read>) => {
+    reads++;
+    return original(...args);
+  });
   const server = createFusionMcpServer({ router, config: loadConfig({}), workspace: service });
   const client = new Client({ name: 'inspect-test', version: '1' });
   const [left, right] = InMemoryTransport.createLinkedPair();
-  await server.connect(left); await client.connect(right);
-  t.after(async () => { await client.close(); await server.close(); });
+  await server.connect(left);
+  await client.connect(right);
+  t.after(async () => {
+    await client.close();
+    await server.close();
+  });
   const direct = await client.callTool({ name: 'fusion_read_file', arguments: { path: 'source.txt', maxLines: 1 } });
   assert.equal(direct.structuredContent, undefined);
   assert.match((direct.content as any)[0].text, /nextLine=2/);
   assert.equal(JSON.stringify(direct).split('unique evidence').length - 1, 1);
   reads = 0;
-  const result = await client.callTool({ name: 'fusion_inspect', arguments: { requests: [
-    { action: 'read', path: 'source.txt' }, { path: 'source.txt', action: 'read' },
-    { action: 'read', path: 'missing.txt' }, { action: 'search', query: ['needle', 'next'], contextLines: 1 },
-  ] } });
+  const result = await client.callTool({
+    name: 'fusion_inspect',
+    arguments: {
+      requests: [
+        { action: 'read', path: 'source.txt' },
+        { path: 'source.txt', action: 'read' },
+        { action: 'read', path: 'missing.txt' },
+        { action: 'search', query: ['needle', 'next'], contextLines: 1 },
+      ],
+    },
+  });
   const text = (result.content as any)[0].text as string;
   const { evidenceRefs, ...legacyMetadata } = result.structuredContent as any;
   assert.deepEqual(legacyMetadata, { requests: 4, failed: [3], clipped: [], executed: 3, modelCalls: 0 });
-  assert.deepEqual(evidenceRefs.map((item: any) => item.request), [1, 4]);
-  assert.ok(text.indexOf('[1 read]') < text.indexOf('[2 read]') && text.indexOf('[2 read]') < text.indexOf('[3 read ERROR]'));
+  assert.deepEqual(
+    evidenceRefs.map((item: any) => item.request),
+    [1, 4],
+  );
+  assert.ok(
+    text.indexOf('[1 read]') < text.indexOf('[2 read]') && text.indexOf('[2 read]') < text.indexOf('[3 read ERROR]'),
+  );
   assert.match(text, /Same as request 1/);
   assert.match(text, /NOT_FOUND/);
   assert.equal(text.split('"source.txt":2: needle').length - 1, 1, 'overlapping context is emitted once');
   assert.equal(reads, 2, 'one successful read plus one missing path; no duplicate execution');
   assert.equal(seen.length, 0);
-  const invalid = await client.callTool({ name: 'fusion_inspect', arguments: { requests: [{ action: 'shell', command: 'echo hi' }] } });
+  const invalid = await client.callTool({
+    name: 'fusion_inspect',
+    arguments: { requests: [{ action: 'shell', command: 'echo hi' }] },
+  });
   assert.equal(invalid.isError, true);
 });
 
-test('snapshot reads complete allowed bytes and rejects secrets and oversized files', async t => {
+test('snapshot reads complete allowed bytes and rejects secrets and oversized files', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'fusion-snapshot-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const source = '🔬'.repeat(20_000);
@@ -545,13 +776,14 @@ test('snapshot reads complete allowed bytes and rejects secrets and oversized fi
   await assert.rejects(service.snapshot('huge.txt'), (error: any) => error.code === 'FILE_TOO_LARGE');
 });
 
-test('snapshot rejects a path redirected outside the root after resolution', async t => {
+test('snapshot rejects a path redirected outside the root after resolution', async (t) => {
   const directory = await mkdtemp(join(tmpdir(), 'fusion-snapshot-race-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const root = join(directory, 'root');
   const outside = join(directory, 'outside');
   const entry = join(root, 'entry');
-  await mkdir(entry, { recursive: true }); await mkdir(outside);
+  await mkdir(entry, { recursive: true });
+  await mkdir(outside);
   await writeFile(join(entry, 'note.txt'), 'allowed');
   await writeFile(join(outside, 'note.txt'), 'private outside');
   const service = new WorkspaceService(root, selecting('unknown', []));
@@ -563,7 +795,7 @@ test('snapshot rejects a path redirected outside the root after resolution', asy
   await assert.rejects(service.snapshot('entry/note.txt'), (error: any) => error.code === 'INVALID_PATH');
 });
 
-test('inspection receipt follows the bytes used for the visible read when source changes', async t => {
+test('inspection receipt follows the bytes used for the visible read when source changes', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'fusion-inspect-version-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   await writeFile(join(root, 'note.txt'), 'version A\n');
@@ -579,9 +811,16 @@ test('inspection receipt follows the bytes used for the visible read when source
   const server = createFusionMcpServer({ router, config: loadConfig({}), workspace: service, evidence });
   const client = new Client({ name: 'version-test', version: '1' });
   const [left, right] = InMemoryTransport.createLinkedPair();
-  await server.connect(left); await client.connect(right);
-  t.after(async () => { await client.close(); await server.close(); });
-  const result = await client.callTool({ name: 'fusion_inspect', arguments: { requests: [{ action: 'read', path: 'note.txt' }] } });
+  await server.connect(left);
+  await client.connect(right);
+  t.after(async () => {
+    await client.close();
+    await server.close();
+  });
+  const result = await client.callTool({
+    name: 'fusion_inspect',
+    arguments: { requests: [{ action: 'read', path: 'note.txt' }] },
+  });
   assert.match((result.content as any)[0].text, /version A/);
   const ref = (result.structuredContent as any).evidenceRefs[0];
   assert.ok(ref.receipt);
@@ -590,14 +829,18 @@ test('inspection receipt follows the bytes used for the visible read when source
   if (page.status === 'stale') assert.equal(Buffer.from(page.dataBase64, 'base64').toString(), 'version A\n');
 });
 
-test('Git receipt preserves raw capped stdout bytes and unknown original length', async t => {
+test('Git receipt preserves raw capped stdout bytes and unknown original length', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'fusion-git-raw-'));
   t.after(() => rm(root, { recursive: true, force: true }));
-  const git = (...args: string[]) => spawnSync('git', args, { cwd: root, encoding: 'buffer', maxBuffer: 2 * 1024 * 1024 });
+  const git = (...args: string[]) =>
+    spawnSync('git', args, { cwd: root, encoding: 'buffer', maxBuffer: 2 * 1024 * 1024 });
   assert.equal(git('init', '-q').status, 0);
   await writeFile(join(root, 'note.txt'), 'before\n');
   assert.equal(git('add', 'note.txt').status, 0);
-  assert.equal(git('-c', 'user.name=Fusion Test', '-c', 'user.email=fusion@example.test', 'commit', '-qm', 'baseline').status, 0);
+  assert.equal(
+    git('-c', 'user.name=Fusion Test', '-c', 'user.email=fusion@example.test', 'commit', '-qm', 'baseline').status,
+    0,
+  );
   await writeFile(join(root, 'note.txt'), 'a'.repeat(32700) + '😀'.repeat(100) + '\n');
   const diff = () => git('--no-pager', 'diff', '--no-ext-diff', '--no-textconv', '--', '.').stdout as Buffer;
   const firstEmoji = diff().indexOf(Buffer.from('😀'));
@@ -609,11 +852,20 @@ test('Git receipt preserves raw capped stdout bytes and unknown original length'
   assert.equal(expected[32767], 0x9f);
   const router = selecting('unknown', []);
   const evidence = new EvidenceStore();
-  const server = createFusionMcpServer({ router, config: loadConfig({}), workspace: new WorkspaceService(root, router), evidence });
+  const server = createFusionMcpServer({
+    router,
+    config: loadConfig({}),
+    workspace: new WorkspaceService(root, router),
+    evidence,
+  });
   const client = new Client({ name: 'git-raw-test', version: '1' });
   const [left, right] = InMemoryTransport.createLinkedPair();
-  await server.connect(left); await client.connect(right);
-  t.after(async () => { await client.close(); await server.close(); });
+  await server.connect(left);
+  await client.connect(right);
+  t.after(async () => {
+    await client.close();
+    await server.close();
+  });
   const result = await client.callTool({ name: 'fusion_inspect', arguments: { requests: [{ action: 'git_diff' }] } });
   const receipt = (result.structuredContent as any).evidenceRefs[0].receipt;
   assert.equal(receipt.truncated, true);
@@ -623,21 +875,37 @@ test('Git receipt preserves raw capped stdout bytes and unknown original length'
   if (page.status === 'ok') assert.deepEqual(Buffer.from(page.dataBase64, 'base64'), expected.subarray(0, 32768));
 });
 
-test('inspection receipts expand full read and search sources despite compact clipping', async t => {
+test('inspection receipts expand full read and search sources despite compact clipping', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'fusion-inspect-evidence-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const source = 'needle ' + '漢'.repeat(12_000) + '\n';
   await writeFile(join(root, 'long.txt'), source);
   const router = selecting('unknown', []);
   const evidence = new EvidenceStore();
-  const server = createFusionMcpServer({ router, config: loadConfig({}), workspace: new WorkspaceService(root, router), evidence });
+  const server = createFusionMcpServer({
+    router,
+    config: loadConfig({}),
+    workspace: new WorkspaceService(root, router),
+    evidence,
+  });
   const client = new Client({ name: 'inspect-evidence-test', version: '1' });
   const [left, right] = InMemoryTransport.createLinkedPair();
-  await server.connect(left); await client.connect(right);
-  t.after(async () => { await client.close(); await server.close(); });
-  const result = await client.callTool({ name: 'fusion_inspect', arguments: { requests: [
-    { action: 'read', path: 'long.txt' }, { action: 'search', path: 'long.txt', query: 'needle' },
-  ], maxChars: 2000 } });
+  await server.connect(left);
+  await client.connect(right);
+  t.after(async () => {
+    await client.close();
+    await server.close();
+  });
+  const result = await client.callTool({
+    name: 'fusion_inspect',
+    arguments: {
+      requests: [
+        { action: 'read', path: 'long.txt' },
+        { action: 'search', path: 'long.txt', query: 'needle' },
+      ],
+      maxChars: 2000,
+    },
+  });
   const metadata = result.structuredContent as any;
   assert.equal(metadata.evidenceRefs.length, 2);
   for (const ref of metadata.evidenceRefs) {
@@ -648,7 +916,7 @@ test('inspection receipts expand full read and search sources despite compact cl
   assert.ok(metadata.clipped.length > 0);
 });
 
-test('inspection labels unavailable snapshots without hiding the compact read', async t => {
+test('inspection labels unavailable snapshots without hiding the compact read', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'fusion-inspect-unavailable-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   await writeFile(join(root, 'note.txt'), 'visible line\n');
@@ -658,48 +926,89 @@ test('inspection labels unavailable snapshots without hiding the compact read', 
   const server = createFusionMcpServer({ router, config: loadConfig({}), workspace: service });
   const client = new Client({ name: 'unavailable-test', version: '1' });
   const [left, right] = InMemoryTransport.createLinkedPair();
-  await server.connect(left); await client.connect(right);
-  t.after(async () => { await client.close(); await server.close(); });
-  const result = await client.callTool({ name: 'fusion_inspect', arguments: { requests: [{ action: 'read', path: 'note.txt' }] } });
+  await server.connect(left);
+  await client.connect(right);
+  t.after(async () => {
+    await client.close();
+    await server.close();
+  });
+  const result = await client.callTool({
+    name: 'fusion_inspect',
+    arguments: { requests: [{ action: 'read', path: 'note.txt' }] },
+  });
   assert.match((result.content as any)[0].text, /visible line/);
-  assert.deepEqual((result.structuredContent as any).evidenceRefs, [{ request: 1, path: 'note.txt', status: 'unavailable' }]);
+  assert.deepEqual((result.structuredContent as any).evidenceRefs, [
+    { request: 1, path: 'note.txt', status: 'unavailable' },
+  ]);
 });
 
-test('inspection preserves a listing if evidence storage fails', async t => {
+test('inspection preserves a listing if evidence storage fails', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'fusion-inspect-storage-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   await writeFile(join(root, 'note.txt'), 'visible');
   const router = selecting('unknown', []);
-  class FailingStore extends EvidenceStore { override capture(): never { throw new Error('storage unavailable'); } }
-  const server = createFusionMcpServer({ router, config: loadConfig({}), workspace: new WorkspaceService(root, router), evidence: new FailingStore() });
+  class FailingStore extends EvidenceStore {
+    override capture(): never {
+      throw new Error('storage unavailable');
+    }
+  }
+  const server = createFusionMcpServer({
+    router,
+    config: loadConfig({}),
+    workspace: new WorkspaceService(root, router),
+    evidence: new FailingStore(),
+  });
   const client = new Client({ name: 'storage-failure-test', version: '1' });
   const [left, right] = InMemoryTransport.createLinkedPair();
-  await server.connect(left); await client.connect(right);
-  t.after(async () => { await client.close(); await server.close(); });
+  await server.connect(left);
+  await client.connect(right);
+  t.after(async () => {
+    await client.close();
+    await server.close();
+  });
   const result = await client.callTool({ name: 'fusion_inspect', arguments: { requests: [{ action: 'list' }] } });
   assert.match((result.content as any)[0].text, /note\.txt/);
   assert.deepEqual((result.structuredContent as any).failed, []);
   assert.deepEqual((result.structuredContent as any).evidenceRefs, [{ request: 1, path: '.', status: 'unavailable' }]);
 });
 
-test('inspection bounds concurrency and output, and marks queued work cancelled without executing it', async t => {
+test('inspection bounds concurrency and output, and marks queued work cancelled without executing it', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'fusion-bounded-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const router = selecting('unknown', []);
   const service = new WorkspaceService(root, router);
-  let running = 0, peak = 0, started = 0;
+  let running = 0,
+    peak = 0,
+    started = 0;
   const controller = new AbortController();
   t.mock.method(service, 'read', async (path: string) => {
-    started++; running++; peak = Math.max(peak, running);
-    await new Promise(resolve => setTimeout(resolve, 10));
+    started++;
+    running++;
+    peak = Math.max(peak, running);
+    await new Promise((resolve) => setTimeout(resolve, 10));
     running--;
-    return { path, startLine: 1, lines: [{ number: 1, text: 'e'.repeat(3000) }], nextLine: null, shortenedLines: false };
+    return {
+      path,
+      startLine: 1,
+      lines: [{ number: 1, text: 'e'.repeat(3000) }],
+      nextLine: null,
+      shortenedLines: false,
+    };
   });
-  const server = createFusionMcpServer({ router, config: loadConfig({}), workspace: service, signal: controller.signal });
+  const server = createFusionMcpServer({
+    router,
+    config: loadConfig({}),
+    workspace: service,
+    signal: controller.signal,
+  });
   const client = new Client({ name: 'bounded-test', version: '1' });
   const [left, right] = InMemoryTransport.createLinkedPair();
-  await server.connect(left); await client.connect(right);
-  t.after(async () => { await client.close(); await server.close(); });
+  await server.connect(left);
+  await client.connect(right);
+  t.after(async () => {
+    await client.close();
+    await server.close();
+  });
   const requests = Array.from({ length: 8 }, (_, i) => ({ action: 'read', path: `${i}.txt` }));
   const result = await client.callTool({ name: 'fusion_inspect', arguments: { requests, maxChars: 2000 } });
   assert.equal(peak, 4);

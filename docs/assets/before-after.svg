@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="620" viewBox="0 0 1200 620" role="img" aria-labelledby="t d">
+  <title id="t">Before and after Fusion Jev</title>
+  <desc id="d">Left, without Fusion: a terminal with 200 lines of unchanged context and one real TypeScript error at the bottom, all 4,290 bytes of stdout going to the agent. Right, with Fusion Jev: a compact result showing exitCode 2, the single error line src/example.ts:4:2 - error TS2322: fixture failure shown verbatim, omittedBytes 4290 and a receipt ID; the full log is recoverable with npx -y fusion-jev@0.3.0 evidence ID --raw.</desc>
+  <style>
+    text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+    .m{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;font-size:14px}
+    .g{fill:#6E7681}.dim{fill:#8B949E;font-style:italic}.p{fill:#7EE787}.r{fill:#FF7B72;font-weight:700}
+    .k{fill:#8B949E;font-size:14px}.v{fill:#F0F6FC}.h{font-size:22px;font-weight:700}
+  </style>
+  <rect width="1200" height="620" rx="24" fill="#0D1117"/>
+  <rect x="0.5" y="0.5" width="1199" height="619" rx="24" fill="none" stroke="#30363D"/>
+
+  <text class="h" x="40" y="48" fill="#F0F6FC">Without Fusion</text>
+  <text x="232" y="48" font-size="15" fill="#8B949E">the agent reads the whole log</text>
+  <g>
+    <rect x="24" y="68" width="560" height="482" rx="12" fill="#161B22" stroke="#30363D"/>
+    <path d="M24 80a12 12 0 0 1 12-12h536a12 12 0 0 1 12 12v18H24z" fill="#21262D"/>
+    <circle cx="44" cy="84" r="5" fill="#FF5F56"/><circle cx="62" cy="84" r="5" fill="#FFBD2E"/><circle cx="80" cy="84" r="5" fill="#27C93F"/>
+    <text class="m p" x="48" y="150">$ node -e "…fixture: 200 noisy lines + 1 error…"</text>
+    <text class="m g" x="48" y="170">unchanged context 0</text>
+    <text class="m g" x="48" y="190">unchanged context 1</text>
+    <text class="m g" x="48" y="210">unchanged context 2</text>
+    <text class="m g" x="48" y="230">unchanged context 3</text>
+    <text class="m g" x="48" y="250">unchanged context 4</text>
+    <text class="m g" x="48" y="270">unchanged context 5</text>
+    <text class="m g" x="48" y="290">unchanged context 6</text>
+    <text class="m g" x="48" y="310">unchanged context 7</text>
+    <text class="m g" x="48" y="330">unchanged context 8</text>
+    <text class="m dim" x="48" y="350">⋮   184 more unchanged lines   ⋮</text>
+    <text class="m g" x="48" y="370">unchanged context 193</text>
+    <text class="m g" x="48" y="390">unchanged context 194</text>
+    <text class="m g" x="48" y="410">unchanged context 195</text>
+    <text class="m g" x="48" y="430">unchanged context 196</text>
+    <text class="m g" x="48" y="450">unchanged context 197</text>
+    <text class="m g" x="48" y="470">unchanged context 198</text>
+    <text class="m g" x="48" y="490">unchanged context 199</text>
+    <rect x="40" y="495" width="528" height="22" rx="4" fill="#3D1418"/>
+    <text class="m r" x="48" y="510">src/example.ts:4:2 - error TS2322: fixture failure</text>
+    
+  </g>
+  <text x="40" y="582" font-size="15" fill="#8B949E">200 lines · 4,290 bytes of stdout · 1 real error at the very end</text>
+
+  <circle cx="600" cy="309" r="14" fill="#F2803A"/>
+  <path d="M594 309h11m-5-5 5 5-5 5" stroke="#0D1117" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <text class="h" x="632" y="48" fill="#F0F6FC">With Fusion <tspan fill="#F2803A">Jev</tspan></text>
+  <text x="826" y="48" font-size="15" fill="#8B949E">the agent gets a compact result</text>
+  <g>
+    <rect x="616" y="68" width="560" height="260" rx="12" fill="#161B22" stroke="#F2803A" stroke-width="1.5"/>
+    <text class="k" x="640" y="108">exit code</text>
+    <text class="m v" x="736" y="108">exitCode=2 <tspan fill="#8B949E">(preserved)</tspan></text>
+    <text class="k" x="640" y="148">diagnostic</text>
+    <rect x="728" y="131" width="436" height="24" rx="4" fill="#3D1418"/>
+    <text class="m r" x="736" y="148">src/example.ts:4:2 - error TS2322: fixture failure</text>
+    <text class="k" x="640" y="188">omitted</text>
+    <text class="m v" x="736" y="188">omittedBytes=4290</text>
+    <text class="k" x="640" y="228">receipt</text>
+    <text class="m v" x="736" y="228">stdout=546e7c15-…</text>
+    <line x1="640" y1="256" x2="1152" y2="256" stroke="#30363D"/>
+    <text class="k" x="640" y="290">recover</text>
+    <text class="m p" x="736" y="290">npx -y fusion-jev@0.3.0 evidence 546e7c15-… --raw</text>
+  </g>
+  <path d="M896 336v52" stroke="#F2803A" stroke-width="2.5" stroke-dasharray="6 5"/>
+  <path d="M886 380l10 12 10-12" stroke="#F2803A" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="914" y="368" font-size="15" font-weight="600" fill="#F2803A">full log recoverable</text>
+  <g>
+    <rect x="616" y="400" width="560" height="150" rx="12" fill="#161B22" stroke="#30363D" stroke-dasharray="6 5"/>
+    <text x="640" y="436" font-size="16" font-weight="600" fill="#F0F6FC">Local receipt store</text>
+    <text class="m g" x="640" y="468">unchanged context 0</text>
+    <text class="m g" x="640" y="488">unchanged context 1</text>
+    <text class="m dim" x="640" y="508">⋮</text>
+    <text class="m g" x="640" y="528">unchanged context 199</text>
+    <text x="1152" y="468" font-size="14" fill="#8B949E" text-anchor="end">original 200 lines</text>
+    <text x="1152" y="490" font-size="14" fill="#8B949E" text-anchor="end">4,290 bytes, short-lived</text>
+  </g>
+  <text x="632" y="582" font-size="15" fill="#8B949E">same exit code · one diagnostic · nothing rerun to get the log back</text>
+</svg>

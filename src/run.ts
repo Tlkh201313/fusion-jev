@@ -1,22 +1,35 @@
 import spawn from 'cross-spawn';
 import { spawn as nodeSpawn, type ChildProcess } from 'node:child_process';
 import type { Readable } from 'node:stream';
-import { isAbsolute, join } from 'node:path';
+import { isAbsolute } from 'node:path';
+import { windowsPowerShell } from './acl.js';
 import { EvidenceStore, type EvidenceReceipt } from './evidence.js';
+import { LIMITS } from './limits.js';
 
 export interface RunInput {
-  argv: [string, ...string[]]; cwd?: string; timeoutMs?: number; maxCaptureBytes?: number; raw?: boolean;
+  argv: [string, ...string[]];
+  cwd?: string;
+  timeoutMs?: number;
+  maxCaptureBytes?: number;
+  raw?: boolean;
 }
 export interface RunResult {
   termination: 'exit' | 'signal' | 'timeout' | 'cancelled' | 'spawn_error';
-  exitCode: number | null; signal?: string; errorCode?: 'not_found' | 'access_denied' | 'launch_failed';
+  exitCode: number | null;
+  signal?: string;
+  errorCode?: 'not_found' | 'access_denied' | 'launch_failed';
   cleanupFailed?: boolean;
-  stdout: EvidenceReceipt; stderr: EvidenceReceipt; durationMs: number;
+  stdout: EvidenceReceipt;
+  stderr: EvidenceReceipt;
+  durationMs: number;
 }
 
-const MAX_CAPTURE = 8 * 1024 * 1024;
+const DEFERRED_SNAPSHOT_MS = 1000;
 
-interface WindowsIdentity { pid: number; startTicks: string }
+interface WindowsIdentity {
+  pid: number;
+  startTicks: string;
+}
 
 const WINDOWS_TREE_SNAPSHOT = `
 $ErrorActionPreference = 'Stop'
@@ -75,49 +88,98 @@ if ($failed) { exit 1 }
 exit 0
 `;
 
-function runWindowsHelper(script: string, environment: Record<string, string>): Promise<string | undefined> {
-  return new Promise(resolve => {
-    const systemRoot = process.env.SystemRoot ?? 'C:\\Windows';
-    const command = join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
-    const helper = nodeSpawn(command, ['-NoProfile', '-NonInteractive', '-Command', script], {
-      stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true, shell: false,
-      env: { ...process.env, ...environment },
-    });
+function runWindowsHelper(
+  script: string,
+  environment: Record<string, string>,
+  signal?: AbortSignal,
+): Promise<string | undefined> {
+  return new Promise((resolve) => {
+    if (signal?.aborted) {
+      resolve(undefined);
+      return;
+    }
+    let helper: ChildProcess;
+    try {
+      helper = nodeSpawn(windowsPowerShell(), ['-NoProfile', '-NonInteractive', '-Command', script], {
+        stdio: ['ignore', 'pipe', 'ignore'],
+        windowsHide: true,
+        shell: false,
+        env: { ...process.env, ...environment },
+      });
+    } catch {
+      resolve(undefined);
+      return;
+    }
     let done = false;
     let output = '';
     const finish = (value: string | undefined) => {
       if (done) return;
       done = true;
       clearTimeout(timer);
+      signal?.removeEventListener('abort', onAbort);
       resolve(value);
     };
-    const timer = setTimeout(() => { helper.kill('SIGKILL'); finish(undefined); }, 3500);
+    // A read-only helper whose answer is no longer needed must not hold the CLI open.
+    const onAbort = () => {
+      helper.kill('SIGKILL');
+      finish(undefined);
+    };
+    signal?.addEventListener('abort', onAbort, { once: true });
+    const timer = setTimeout(() => {
+      helper.kill('SIGKILL');
+      finish(undefined);
+    }, LIMITS.treeHelperMs);
     helper.stdout?.on('data', (chunk: Buffer) => {
-      if (output.length + chunk.length > 64 * 1024) { helper.kill('SIGKILL'); finish(undefined); }
-      else output += chunk.toString('utf8');
+      if (output.length + chunk.length > LIMITS.treeHelperOutputBytes) {
+        helper.kill('SIGKILL');
+        finish(undefined);
+      } else output += chunk.toString('utf8');
     });
     helper.once('error', () => finish(undefined));
-    helper.once('close', code => finish(code === 0 ? output : undefined));
+    helper.once('close', (code) => finish(code === 0 ? output : undefined));
   });
 }
 
-export async function snapshotWindowsTree(rootPid: number): Promise<WindowsIdentity[] | undefined> {
-  const output = await runWindowsHelper(WINDOWS_TREE_SNAPSHOT, { FUSION_RUN_ROOT_PID: String(rootPid) });
+export async function snapshotWindowsTree(
+  rootPid: number,
+  signal?: AbortSignal,
+): Promise<WindowsIdentity[] | undefined> {
+  const output = await runWindowsHelper(WINDOWS_TREE_SNAPSHOT, { FUSION_RUN_ROOT_PID: String(rootPid) }, signal);
   if (!output) return undefined;
   try {
     const value: unknown = JSON.parse(output);
-    if (!Array.isArray(value) || value.length < 1 || value.length > 256 || value.some(item =>
-      !item || typeof item !== 'object' || !Number.isSafeInteger(item.pid) || item.pid < 1 ||
-      typeof item.startTicks !== 'string' || !/^[1-9]\d{0,19}$/.test(item.startTicks))) return undefined;
-    if (!value.some(item => item.pid === rootPid)) return undefined;
+    if (
+      !Array.isArray(value) ||
+      value.length < 1 ||
+      value.length > 256 ||
+      value.some(
+        (item) =>
+          !item ||
+          typeof item !== 'object' ||
+          !Number.isSafeInteger(item.pid) ||
+          item.pid < 1 ||
+          typeof item.startTicks !== 'string' ||
+          !/^[1-9]\d{0,19}$/.test(item.startTicks),
+      )
+    )
+      return undefined;
+    if (!value.some((item) => item.pid === rootPid)) return undefined;
     return value as WindowsIdentity[];
-  } catch { return undefined; }
+  } catch {
+    return undefined;
+  }
 }
 
 // Exported from this module for a direct PID-reuse safety regression; the package index does not expose it.
 export async function terminateWindowsTree(identities: WindowsIdentity[]): Promise<boolean> {
-  if (!identities.length || identities.length > 256 || identities.some(item =>
-    !Number.isSafeInteger(item.pid) || item.pid < 1 || !/^[1-9]\d{0,19}$/.test(item.startTicks))) return false;
+  if (
+    !identities.length ||
+    identities.length > 256 ||
+    identities.some(
+      (item) => !Number.isSafeInteger(item.pid) || item.pid < 1 || !/^[1-9]\d{0,19}$/.test(item.startTicks),
+    )
+  )
+    return false;
   const result = await runWindowsHelper(WINDOWS_TREE_TERMINATE, { FUSION_RUN_IDENTITIES: JSON.stringify(identities) });
   return result !== undefined;
 }
@@ -125,7 +187,8 @@ export async function terminateWindowsTree(identities: WindowsIdentity[]): Promi
 // A snapshot is never accepted unless the launched process is still known to be live
 // both before the helper starts and after it returns.
 export async function captureWindowsIdentity(
-  snapshot: () => Promise<WindowsIdentity[] | undefined>, canTrustRoot: () => boolean,
+  snapshot: () => Promise<WindowsIdentity[] | undefined>,
+  canTrustRoot: () => boolean,
 ): Promise<WindowsIdentity[] | undefined> {
   if (!canTrustRoot()) return undefined;
   const identities = await snapshot();
@@ -133,7 +196,9 @@ export async function captureWindowsIdentity(
 }
 
 export async function cleanupWindowsTree(
-  rootPid: number, identitySnapshot: Promise<WindowsIdentity[] | undefined>, canTrustRoot: () => boolean,
+  rootPid: number,
+  identitySnapshot: Promise<WindowsIdentity[] | undefined>,
+  canTrustRoot: () => boolean,
   snapshot: (pid: number) => Promise<WindowsIdentity[] | undefined> = snapshotWindowsTree,
   terminate: (identities: WindowsIdentity[]) => Promise<boolean> = terminateWindowsTree,
 ): Promise<boolean> {
@@ -156,17 +221,33 @@ export async function cleanupWindowsTree(
 
 // A child that has reported exit can no longer bind PID-based discovery to
 // the launched process. Use only the public ChildProcess lifecycle state.
-export function canTrustWindowsRoot(child: Pick<ChildProcess, 'exitCode' | 'signalCode'>, exitObserved: boolean): boolean {
+export function canTrustWindowsRoot(
+  child: Pick<ChildProcess, 'exitCode' | 'signalCode'>,
+  exitObserved: boolean,
+): boolean {
   return !exitObserved && child.exitCode === null && child.signalCode === null;
 }
 
-async function killTree(child: ChildProcess, identitySnapshot: Promise<WindowsIdentity[] | undefined>, canTrustRoot: () => boolean): Promise<boolean> {
+async function killTree(
+  child: ChildProcess,
+  identitySnapshot: () => Promise<WindowsIdentity[] | undefined>,
+  canTrustRoot: () => boolean,
+): Promise<boolean> {
   if (!child.pid) return false;
   if (process.platform !== 'win32') {
-    try { process.kill(-child.pid, 'SIGKILL'); return true; }
-    catch { try { child.kill('SIGKILL'); return true; } catch { return false; } }
+    try {
+      process.kill(-child.pid, 'SIGKILL');
+      return true;
+    } catch {
+      try {
+        child.kill('SIGKILL');
+        return true;
+      } catch {
+        return false;
+      }
+    }
   }
-  return cleanupWindowsTree(child.pid, identitySnapshot, canTrustRoot);
+  return cleanupWindowsTree(child.pid, identitySnapshot(), canTrustRoot);
 }
 
 function errorCode(error: Error): RunResult['errorCode'] {
@@ -175,13 +256,18 @@ function errorCode(error: Error): RunResult['errorCode'] {
 }
 
 export async function runCommand(input: RunInput, evidence: EvidenceStore, signal?: AbortSignal): Promise<RunResult> {
-  if (!Array.isArray(input.argv) || !input.argv.length || input.argv.some(arg => typeof arg !== 'string') || !input.argv[0])
+  if (
+    !Array.isArray(input.argv) ||
+    !input.argv.length ||
+    input.argv.some((arg) => typeof arg !== 'string') ||
+    !input.argv[0]
+  )
     throw new TypeError('Command argv must include a program');
   if (input.cwd !== undefined && !isAbsolute(input.cwd)) throw new TypeError('Command cwd must be absolute');
   if (input.timeoutMs !== undefined && (!Number.isSafeInteger(input.timeoutMs) || input.timeoutMs < 1))
     throw new RangeError('Invalid command timeout');
-  const maxCaptureBytes = input.maxCaptureBytes ?? MAX_CAPTURE;
-  if (!Number.isSafeInteger(maxCaptureBytes) || maxCaptureBytes < 1 || maxCaptureBytes > MAX_CAPTURE)
+  const maxCaptureBytes = input.maxCaptureBytes ?? LIMITS.captureBytes;
+  if (!Number.isSafeInteger(maxCaptureBytes) || maxCaptureBytes < 1 || maxCaptureBytes > LIMITS.captureBytes)
     throw new RangeError('Invalid command capture limit');
   const cwd = input.cwd ?? process.cwd();
   const started = performance.now();
@@ -201,18 +287,39 @@ export async function runCommand(input: RunInput, evidence: EvidenceStore, signa
       const sink = channel === 'stdout' ? process.stdout : process.stderr;
       if (!sink.write(chunk)) {
         source.pause();
-        const drained = new Promise<void>(resolve => sink.once('drain', () => { source.resume(); resolve(); }));
+        const drained = new Promise<void>((resolve) =>
+          sink.once('drain', () => {
+            source.resume();
+            resolve();
+          }),
+        );
         pendingDrains.add(drained);
         void drained.then(() => pendingDrains.delete(drained));
       }
     }
   };
-  const finish = (fields: Pick<RunResult, 'termination' | 'exitCode' | 'signal' | 'errorCode' | 'cleanupFailed'>, incomplete = false): RunResult => {
-    const source = (channel: 'stdout' | 'stderr') => ({ kind: 'command' as const, cwd, argv: [...input.argv], channel });
-    const stdout = evidence.capture({ source: source('stdout'), bytes: Buffer.concat(chunks.stdout), originalBytes: incomplete ? null : originals.stdout,
-      truncated: incomplete || originals.stdout > sizes.stdout });
-    const stderr = evidence.capture({ source: source('stderr'), bytes: Buffer.concat(chunks.stderr), originalBytes: incomplete ? null : originals.stderr,
-      truncated: incomplete || originals.stderr > sizes.stderr });
+  const finish = (
+    fields: Pick<RunResult, 'termination' | 'exitCode' | 'signal' | 'errorCode' | 'cleanupFailed'>,
+    incomplete = false,
+  ): RunResult => {
+    const source = (channel: 'stdout' | 'stderr') => ({
+      kind: 'command' as const,
+      cwd,
+      argv: [...input.argv],
+      channel,
+    });
+    const stdout = evidence.capture({
+      source: source('stdout'),
+      bytes: Buffer.concat(chunks.stdout),
+      originalBytes: incomplete ? null : originals.stdout,
+      truncated: incomplete || originals.stdout > sizes.stdout,
+    });
+    const stderr = evidence.capture({
+      source: source('stderr'),
+      bytes: Buffer.concat(chunks.stderr),
+      originalBytes: incomplete ? null : originals.stderr,
+      truncated: incomplete || originals.stderr > sizes.stderr,
+    });
     return { ...fields, stdout, stderr, durationMs: performance.now() - started };
   };
   if (signal?.aborted) return finish({ termination: 'cancelled', exitCode: null });
@@ -223,77 +330,137 @@ export async function runCommand(input: RunInput, evidence: EvidenceStore, signa
       // A batch file that forwards `%*` reparses metacharacters. cross-spawn doubles
       // escaping for node_modules/.bin shims; apply that same protection to other
       // explicit .cmd/.bat launchers before cross-spawn's normal escaping pass.
-      const batch = process.platform === 'win32' && /\.(?:cmd|bat)$/i.test(input.argv[0]) &&
+      const batch =
+        process.platform === 'win32' &&
+        /\.(?:cmd|bat)$/i.test(input.argv[0]) &&
         !/node_modules[\\/]\.bin[\\/][^\\/]+\.cmd$/i.test(input.argv[0]);
-      const argv = batch ? input.argv.slice(1).map(arg => arg.replace(/([()%!^<>&|;,])/g, '^$1')) : input.argv.slice(1);
+      const argv = batch
+        ? input.argv.slice(1).map((arg) => arg.replace(/([()%!^<>&|;,])/g, '^$1'))
+        : input.argv.slice(1);
       child = spawn(input.argv[0], argv, {
-        cwd, shell: false, stdio: ['inherit', 'pipe', 'pipe'], windowsHide: true,
-        detached: process.platform !== 'win32', windowsVerbatimArguments: false,
+        cwd,
+        shell: false,
+        stdio: ['inherit', 'pipe', 'pipe'],
+        windowsHide: true,
+        detached: process.platform !== 'win32',
+        windowsVerbatimArguments: false,
       });
     } catch (error) {
       resolve(finish({ termination: 'spawn_error', exitCode: null, errorCode: errorCode(error as Error) }));
       return;
     }
     let exitObserved = false;
-    child.once('exit', () => { exitObserved = true; });
+    child.once('exit', () => {
+      exitObserved = true;
+    });
     const rootIsLive = () => canTrustWindowsRoot(child, exitObserved);
-    const identitySnapshot = process.platform === 'win32' && (input.timeoutMs !== undefined || signal !== undefined) && child.pid && rootIsLive()
-      ? captureWindowsIdentity(() => snapshotWindowsTree(child.pid!), rootIsLive).then(async first => {
-        if (!first) return undefined;
-        // One later snapshot records descendants spawned just after the root.
-        // This is bounded to two queries rather than a persistent CIM poll.
-        await new Promise<void>(resolve => { const timer = setTimeout(resolve, 200); timer.unref(); });
-        const second = await captureWindowsIdentity(() => snapshotWindowsTree(child.pid!), rootIsLive);
-        if (!second) return first;
-        const merged = new Map(first.map(item => [item.pid, item]));
-        for (const item of second) {
-          const prior = merged.get(item.pid);
-          if (prior && prior.startTicks !== item.startTicks) return undefined;
-          merged.set(item.pid, item);
-        }
-        return [...merged.values()];
-      })
-      : Promise.resolve(undefined);
+    // Snapshots only serve a later timeout or cancellation cleanup. Once the run settles
+    // (cleanup, if any, has already been awaited) pending snapshot helpers are stopped.
+    const snapshotHelpers = new AbortController();
+    const takeSnapshots = () =>
+      captureWindowsIdentity(() => snapshotWindowsTree(child.pid!, snapshotHelpers.signal), rootIsLive).then(
+        async (first) => {
+          if (!first || snapshotHelpers.signal.aborted) return first;
+          // One later snapshot records descendants spawned just after the root.
+          // This is bounded to two queries rather than a persistent CIM poll.
+          await new Promise<void>((resolve) => {
+            const timer = setTimeout(resolve, 200);
+            timer.unref();
+          });
+          const second = await captureWindowsIdentity(
+            () => snapshotWindowsTree(child.pid!, snapshotHelpers.signal),
+            rootIsLive,
+          );
+          if (!second) return first;
+          const merged = new Map(first.map((item) => [item.pid, item]));
+          for (const item of second) {
+            const prior = merged.get(item.pid);
+            if (prior && prior.startTicks !== item.startTicks) return undefined;
+            merged.set(item.pid, item);
+          }
+          return [...merged.values()];
+        },
+      );
+    let identitySnapshot: Promise<WindowsIdentity[] | undefined> | undefined;
+    let deferredSnapshot: ReturnType<typeof setTimeout> | undefined;
+    const startSnapshots = () => {
+      if (deferredSnapshot) clearTimeout(deferredSnapshot);
+      return (identitySnapshot ??= takeSnapshots());
+    };
+    if (
+      process.platform !== 'win32' ||
+      !child.pid ||
+      !rootIsLive() ||
+      (input.timeoutMs === undefined && signal === undefined)
+    )
+      identitySnapshot = Promise.resolve(undefined);
+    else if (input.timeoutMs !== undefined) startSnapshots();
+    // A cancellation-only run (the CLI's Ctrl+C handler) defers the PowerShell snapshot so short
+    // commands never compete with it for CPU. A cancellation before the delay snapshots the
+    // still-live root on demand; a root that already exited fails closed as before.
+    else deferredSnapshot = setTimeout(startSnapshots, DEFERRED_SNAPSHOT_MS);
     let reason: 'timeout' | 'cancelled' | undefined;
     let launchedError: Error | undefined;
     let cleanupFailed = false;
     let cleanup: Promise<boolean> | undefined;
     let forced: ReturnType<typeof setTimeout> | undefined;
     let settled = false;
-    const settle = (fields: Pick<RunResult, 'termination' | 'exitCode' | 'signal' | 'errorCode' | 'cleanupFailed'>, incomplete = false) => {
+    const settle = (
+      fields: Pick<RunResult, 'termination' | 'exitCode' | 'signal' | 'errorCode' | 'cleanupFailed'>,
+      incomplete = false,
+    ) => {
       if (settled) return;
       settled = true;
       if (timer) clearTimeout(timer);
       if (forced) clearTimeout(forced);
+      if (deferredSnapshot) clearTimeout(deferredSnapshot);
+      snapshotHelpers.abort();
       signal?.removeEventListener('abort', onAbort);
-      try { resolve(finish(fields, incomplete)); } catch (error) { reject(error); }
+      try {
+        resolve(finish(fields, incomplete));
+      } catch (error) {
+        reject(error);
+      }
     };
     const stop = (why: 'timeout' | 'cancelled') => {
       if (reason || launchedError) return;
       reason = why;
-      cleanup = killTree(child, identitySnapshot, rootIsLive).then(ok => {
+      cleanup = killTree(child, startSnapshots, rootIsLive).then((ok) => {
         if (!ok) {
           cleanupFailed = true;
-          try { child.kill('SIGKILL'); } catch { /* The direct child may already have exited. */ }
+          try {
+            child.kill('SIGKILL');
+          } catch {
+            /* The direct child may already have exited. */
+          }
         }
         return ok;
       });
       forced = setTimeout(() => {
-        child.stdout?.destroy(); child.stderr?.destroy();
+        child.stdout?.destroy();
+        child.stderr?.destroy();
         settle({ termination: why, exitCode: null, cleanupFailed: true }, true);
-      }, 4500);
+      }, LIMITS.treeCleanupMs);
     };
     const onAbort = () => stop('cancelled');
     signal?.addEventListener('abort', onAbort, { once: true });
     const timer = input.timeoutMs === undefined ? undefined : setTimeout(() => stop('timeout'), input.timeoutMs);
     child.stdout?.on('data', (chunk: Buffer) => capture('stdout', chunk, child.stdout!));
     child.stderr?.on('data', (chunk: Buffer) => capture('stderr', chunk, child.stderr!));
-    child.once('error', error => { launchedError = error; });
+    child.once('error', (error) => {
+      launchedError = error;
+    });
     child.once('close', async (code, endedSignal) => {
       if (cleanup) await cleanup;
       await Promise.all([...pendingDrains]);
       if (launchedError) settle({ termination: 'spawn_error', exitCode: null, errorCode: errorCode(launchedError) });
-      else if (reason) settle({ termination: reason, exitCode: null, ...(endedSignal ? { signal: endedSignal } : {}), ...(cleanupFailed ? { cleanupFailed: true } : {}) });
+      else if (reason)
+        settle({
+          termination: reason,
+          exitCode: null,
+          ...(endedSignal ? { signal: endedSignal } : {}),
+          ...(cleanupFailed ? { cleanupFailed: true } : {}),
+        });
       else if (endedSignal) settle({ termination: 'signal', exitCode: null, signal: endedSignal });
       else settle({ termination: 'exit', exitCode: code });
     });

@@ -1,0 +1,12 @@
+case,command,kind,rawBytes,fusionBytes,byteReductionPercent,rawTokensBytesDiv4,fusionTokensBytesDiv4,rawTokensO200k,fusionTokensO200k,rawMedianMs,fusionMedianMs,rawExit,fusionExit,exitPreserved,markerInRaw,markerInFusion,rawOutputStableAcrossRuns,recoveredBytesMatchFusionOriginal,recoveredShaEqualsRawRun,recoveredEqualsRawModuloTimings,stdoutTruncated,stdoutRedacted,stderrTruncated,stderrRedacted
+npm-typecheck-pass,npm run typecheck,pass,60,1042,-1636.7,15,261,24,369,1883,2962,0,0,true,,,true,true,true,true,false,false,false,false
+tsc-fail-3-errors,node tsc -p .,fail,287,1385,-382.6,72,347,88,508,661,2461,1,1,true,true,true,true,true,true,true,false,false,false,false
+tsc-fail-60-errors,node tsc -p .,fail,4995,1473,70.5,1249,369,1620,542,768,2437,1,1,true,true,true,true,true,true,true,false,false,false,false
+node-test-pass-setup,npx tsx --import ./test/offline-env.ts --test test/setup.test.ts,pass,698,1683,-141.1,175,421,195,542,18359,20145,0,0,true,,,false,true,false,true,false,false,false,false
+node-test-fail-1-of-61,node --test math.test.mjs,fail,2604,988,62.1,651,247,1021,351,200,1382,1,1,true,true,false,false,true,false,true,false,false,false,false
+git-log-50,git log -50,info,7583,988,87,1896,247,2194,365,76,1242,0,0,true,,,true,true,true,true,false,false,false,false
+git-log-p-20,git log -p -n 20,info,1112270,1681,99.8,278068,421,304090,613,178,1190,0,0,true,,,true,false,false,false,false,true,false,false
+git-diff-head3-stat,git diff HEAD~3 --stat,info,1323,988,25.3,331,247,277,362,133,1664,0,0,true,,,true,true,true,true,false,false,false,false
+readme-200-line-noise,node -e for (let i=0;i<200;i++) console.log('unchanged context '+i); console.error('src/example.ts:4:2 - error TS2322: fixture failure'); process.exitCode=2,fail,4341,1078,75.2,1086,270,1216,400,70,1197,2,2,true,true,true,true,true,true,true,false,false,false,false
+tiny-node-version,node --version,info,10,990,-9800,3,248,7,375,54,1215,0,0,true,,,true,true,true,true,false,false,false,false
+tiny-git-status,git status --short -- src,info,0,978,-Infinity,0,245,0,345,72,1367,0,0,true,,,true,true,true,true,false,false,false,false

@@ -16,10 +16,13 @@ test('recovery compares full bytes including newline and stdout/stderr channels'
     assert.equal(recovery.exactRecovery, false);
     assert.equal(recovery.silentLoss, true);
   }
-  assert.deepEqual(supportFixtures.map(fixture => [fixture.expectedStdout, fixture.expectedStderr]), [
-    ['export const marker = "café 漢字 🔬";\n', ''],
-    ['', 'file.ts(3,4): error TS2345: expected string, received number\n'],
-  ]);
+  assert.deepEqual(
+    supportFixtures.map((fixture) => [fixture.expectedStdout, fixture.expectedStderr]),
+    [
+      ['export const marker = "café 漢字 🔬";\n', ''],
+      ['', 'file.ts(3,4): error TS2345: expected string, received number\n'],
+    ],
+  );
 });
 
 test('offline paired support benchmark reports measured local observations without acceptance claims', async () => {
@@ -29,8 +32,13 @@ test('offline paired support benchmark reports measured local observations witho
   assert.deepEqual(report.strategies, ['native', 'rtk', 'fusion']);
   assert.equal(report.observations.length, report.fixtures.length * 3);
   for (const fixture of report.fixtures) {
-    assert.deepEqual(report.observations.filter(item => item.fixtureId === fixture.id).map(item => item.strategy).sort(),
-      ['fusion', 'native', 'rtk']);
+    assert.deepEqual(
+      report.observations
+        .filter((item) => item.fixtureId === fixture.id)
+        .map((item) => item.strategy)
+        .sort(),
+      ['fusion', 'native', 'rtk'],
+    );
   }
   for (const item of report.observations) {
     assert.ok(item.hostVisibleBytes >= 0);
@@ -46,7 +54,10 @@ test('offline paired support benchmark reports measured local observations witho
     } else {
       // Installed RTK versions/settings may add notices or change formatting. Report
       // the actual measured recovery rather than prescribing the competitor's result.
-      assert.equal(item.qualityMet, item.available && item.exactRecovery && item.diagnosticTruthMatched && !item.wrongPassFail);
+      assert.equal(
+        item.qualityMet,
+        item.available && item.exactRecovery && item.diagnosticTruthMatched && !item.wrongPassFail,
+      );
       assert.equal(item.silentLoss, item.available && !item.exactRecovery);
     }
   }
@@ -60,23 +71,27 @@ test('offline paired support benchmark reports measured local observations witho
 
 test('missing RTK comparator remains explicitly unavailable without discarding native/Fusion measurements', async () => {
   const report = await runSupportBenchmark({ rounds: 1, rtkExecutable: 'fusion-nonexistent-rtk-fixture' });
-  for (const item of report.observations.filter(item => item.strategy === 'rtk')) {
+  for (const item of report.observations.filter((item) => item.strategy === 'rtk')) {
     assert.equal(item.available, false);
     assert.equal(item.qualityMet, false);
     assert.equal(item.silentLoss, false, 'unavailable capture is disclosed, not silent loss');
     assert.equal(item.wrongPassFail, false, 'no child ran');
   }
-  assert.ok(report.observations.filter(item => item.strategy !== 'rtk').every(item => item.qualityMet));
+  assert.ok(report.observations.filter((item) => item.strategy !== 'rtk').every((item) => item.qualityMet));
 });
 
 test('noisy command benchmarks measure compact presentation separately from recovery', async () => {
   const report = await runSupportBenchmark({ rounds: 1, corpus: 'noisy' } as any);
   assert.ok(report.fixtures.length >= 6);
-  const fusion = report.observations.filter(item => item.strategy === 'fusion');
-  assert.ok(fusion.every(item => item.exactRecovery && !item.silentLoss));
-  assert.ok(fusion.some(item => {
-    const native = report.observations.find(other => other.fixtureId === item.fixtureId && other.strategy === 'native')!;
-    return item.hostVisibleBytes < native.hostVisibleBytes / 2;
-  }));
+  const fusion = report.observations.filter((item) => item.strategy === 'fusion');
+  assert.ok(fusion.every((item) => item.exactRecovery && !item.silentLoss));
+  assert.ok(
+    fusion.some((item) => {
+      const native = report.observations.find(
+        (other) => other.fixtureId === item.fixtureId && other.strategy === 'native',
+      )!;
+      return item.hostVisibleBytes < native.hostVisibleBytes / 2;
+    }),
+  );
   assert.match(report.method.bytes, /compact.*expansion/i);
 });

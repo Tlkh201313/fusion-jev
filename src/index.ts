@@ -9,7 +9,7 @@ export { JevProvider } from './providers/jev.js';
 export { GptProvider } from './providers/gpt.js';
 export { ProviderError } from './errors.js';
 export { createFusionMcpServer, startStdioServer, startHttpServer, validateHttpConfig } from './mcp.js';
-export type { RoutingService, McpOptions } from './mcp.js';
+export type { McpOptions } from './mcp.js';
 export { createTokenVerifier } from './oauth.js';
 export { EvidenceStore } from './evidence.js';
 export type { EvidenceSource, EvidenceCapture, EvidenceReceipt, EvidencePage } from './evidence.js';

@@ -1,0 +1,16 @@
+fc94219 Match the package smoke check to the current Codex default prompt
+193bc64 Pass small output through, cut run overhead, and fix diagnostics from the first raw-vs-Fusion benchmark
+1677e6d Add README graphics and pin npx setup commands outside the npx cache
+8a22ed4 Pin host run guidance, harden Windows evidence checks, and align Codex prompts
+5dfdd24 Ignore vanished files when hardening a shared Windows evidence cache
+7ac2914 Name the ACL failure reason and fail research process tests instead of hanging
+8dd914a Tolerate Node 22.12 Windows stat dev=0 when verifying a workspace read
+8b547d1 Accept Administrators-group ownership of private config for administrator callers
+b7eb65f Report the failing check in private path permission errors on Windows
+785be11 Fix POSIX test fixtures: 0600 receipt, flushed child stderr, new Git submodule refusal, bounded admission race
+058e36c Canonicalize temp paths in tests and use native realpath for roots
+c81a0f6 CI: disable matrix fail-fast so every OS and Node version reports
+be494da Remove stray empty file created by a bad sed in the previous commit
+541e291 Fix npx-only guidance, pin plugin launches, and harden release checks
+6e3f64b Make fusion-jev installable and launch-ready: npx launch, rename, docs overhaul
+ccaefdd Release Fusion Jev community MCP source

@@ -16,11 +16,26 @@ const sink = new Writable({
 const descriptor = Object.getOwnPropertyDescriptor(process, 'stdout');
 Object.defineProperty(process, 'stdout', { configurable: true, value: sink });
 try {
-  const result = await runCommand({ argv: [process.execPath, '-e', 'process.stdout.write(Buffer.alloc(1024*1024,0x5a))'], raw: true, maxCaptureBytes: 1024 }, new EvidenceStore());
+  const result = await runCommand(
+    {
+      argv: [process.execPath, '-e', 'process.stdout.write(Buffer.alloc(1024*1024,0x5a))'],
+      raw: true,
+      maxCaptureBytes: 1024,
+    },
+    new EvidenceStore(),
+  );
   const actual = Buffer.concat(bytes);
-  process.stderr.write(JSON.stringify({ exitCode: result.exitCode, storedBytes: result.stdout.storedBytes,
-    originalBytes: result.stdout.originalBytes, queuedAtReturn: sink.writableLength, peakQueued,
-    byteLength: actual.length, sha256: createHash('sha256').update(actual).digest('hex') }));
+  process.stderr.write(
+    JSON.stringify({
+      exitCode: result.exitCode,
+      storedBytes: result.stdout.storedBytes,
+      originalBytes: result.stdout.originalBytes,
+      queuedAtReturn: sink.writableLength,
+      peakQueued,
+      byteLength: actual.length,
+      sha256: createHash('sha256').update(actual).digest('hex'),
+    }),
+  );
 } finally {
   if (descriptor) Object.defineProperty(process, 'stdout', descriptor);
 }

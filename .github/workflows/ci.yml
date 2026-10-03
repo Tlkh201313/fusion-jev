@@ -4,9 +4,14 @@ on:
   pull_request:
 permissions:
   contents: read
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   check:
+    timeout-minutes: 30
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
         node: ['22.12.0', '24']
@@ -21,8 +26,12 @@ jobs:
       - run: npm run check
       - run: npm run demo
       - run: npm run benchmark
+        if: matrix.os == 'ubuntu-latest' && matrix.node == '24'
       - run: npm run benchmark:workspace
+        if: matrix.os == 'ubuntu-latest' && matrix.node == '24'
       - run: npm run benchmark:support -- --corpus=noisy
+        if: matrix.os == 'ubuntu-latest' && matrix.node == '24'
       - run: npm run benchmark:workflows
+        if: matrix.os == 'ubuntu-latest' && matrix.node == '24'
       - run: npm pack --dry-run
       - run: npm run pack:smoke

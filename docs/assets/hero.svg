@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="400" viewBox="0 0 1200 400" role="img" aria-labelledby="t d">
+  <title id="t">Fusion Jev</title>
+  <desc id="d">Banner: an orange pixel-art claw critter next to the name Fusion Jev and the tagline "Keep noisy command output small. Recover the captured evidence when you need it." Works with Claude Code and Codex.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#161B22"/>
+      <stop offset="1" stop-color="#0D1117"/>
+    </linearGradient>
+    <pattern id="dots" width="24" height="24" patternUnits="userSpaceOnUse">
+      <circle cx="2" cy="2" r="1.2" fill="#30363D"/>
+    </pattern>
+  </defs>
+  <style>
+    text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace}
+  </style>
+  <rect x="0" y="0" width="1200" height="400" rx="24" fill="url(#bg)"/>
+  <rect x="0" y="0" width="1200" height="400" rx="24" fill="url(#dots)" opacity="0.6"/>
+  <rect x="0.5" y="0.5" width="1199" height="399" rx="24" fill="none" stroke="#30363D"/>
+  <ellipse cx="200" cy="306" rx="104" ry="12" fill="#000000" opacity="0.35"/>
+  <g transform="translate(104 140)">
+    <path fill="#F2803A" d="M24 0h12v12h-12zM36 0h12v12h-12zM144 0h12v12h-12zM156 0h12v12h-12zM12 12h12v12h-12zM48 12h12v12h-12zM132 12h12v12h-12zM168 12h12v12h-12zM12 24h12v12h-12zM24 24h12v12h-12zM36 24h12v12h-12zM48 24h12v12h-12zM132 24h12v12h-12zM144 24h12v12h-12zM156 24h12v12h-12zM168 24h12v12h-12zM24 36h12v12h-12zM36 36h12v12h-12zM144 36h12v12h-12zM156 36h12v12h-12zM36 48h12v12h-12zM60 48h12v12h-12zM72 48h12v12h-12zM84 48h12v12h-12zM96 48h12v12h-12zM108 48h12v12h-12zM120 48h12v12h-12zM144 48h12v12h-12zM48 60h12v12h-12zM60 60h12v12h-12zM72 60h12v12h-12zM84 60h12v12h-12zM96 60h12v12h-12zM108 60h12v12h-12zM120 60h12v12h-12zM132 60h12v12h-12zM36 72h12v12h-12zM48 72h12v12h-12zM84 72h12v12h-12zM96 72h12v12h-12zM132 72h12v12h-12zM144 72h12v12h-12zM36 84h12v12h-12zM48 84h12v12h-12zM84 84h12v12h-12zM96 84h12v12h-12zM132 84h12v12h-12zM144 84h12v12h-12zM24 96h12v12h-12zM36 96h12v12h-12zM48 96h12v12h-12zM60 96h12v12h-12zM72 96h12v12h-12zM84 96h12v12h-12zM96 96h12v12h-12zM108 96h12v12h-12zM120 96h12v12h-12zM132 96h12v12h-12zM144 96h12v12h-12zM156 96h12v12h-12zM24 108h12v12h-12zM36 108h12v12h-12zM48 108h12v12h-12zM60 108h12v12h-12zM120 108h12v12h-12zM132 108h12v12h-12zM144 108h12v12h-12zM156 108h12v12h-12zM36 120h12v12h-12zM48 120h12v12h-12zM60 120h12v12h-12zM72 120h12v12h-12zM84 120h12v12h-12zM96 120h12v12h-12zM108 120h12v12h-12zM120 120h12v12h-12zM132 120h12v12h-12zM144 120h12v12h-12zM36 132h12v12h-12zM60 132h12v12h-12zM120 132h12v12h-12zM144 132h12v12h-12zM24 144h12v12h-12zM60 144h12v12h-12zM120 144h12v12h-12zM156 144h12v12h-12z"/>
+    <path fill="#FFFFFF" d="M60 72h12v12h-12zM108 72h12v12h-12z"/>
+    <path fill="#1B1F24" d="M72 72h12v12h-12zM120 72h12v12h-12zM60 84h12v12h-12zM72 84h12v12h-12zM108 84h12v12h-12zM120 84h12v12h-12z"/>
+    <path fill="#C9561E" d="M72 108h12v12h-12zM84 108h12v12h-12zM96 108h12v12h-12zM108 108h12v12h-12z"/>
+  </g>
+  <g transform="translate(400 0)">
+    <text x="0" y="150" font-size="84" font-weight="800" fill="#F0F6FC" letter-spacing="-1">Fusion <tspan fill="#F2803A">Jev</tspan></text>
+    <text x="2" y="206" font-size="27" fill="#C9D1D9">Keep noisy command output small.</text>
+    <text x="2" y="244" font-size="27" fill="#C9D1D9">Recover the captured evidence when you need it.</text>
+    <rect x="2" y="282" width="320" height="44" rx="22" fill="#21262D" stroke="#30363D"/>
+    <text x="24" y="311" font-size="18" fill="#8B949E">works with</text>
+    <text x="122" y="311" font-size="18" font-weight="600" fill="#F0F6FC">Claude Code · Codex</text>
+    <text class="mono" x="350" y="311" font-size="17" fill="#7EE787">$ fusion-jev run -- npm test</text>
+  </g>
+</svg>

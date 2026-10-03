@@ -9,8 +9,14 @@ export interface ToolDefinition {
   /** An execution host must use its own trusted registry for authorization. */
   readOnly?: boolean;
 }
-export interface ToolCall { tool: string; arguments: JsonObject }
-export interface Candidate extends ToolCall { id: string; description?: string }
+export interface ToolCall {
+  tool: string;
+  arguments: JsonObject;
+}
+export interface Candidate extends ToolCall {
+  id: string;
+  description?: string;
+}
 export type Strategy = 'fusion' | 'gpt-only' | 'jev-only';
 export interface RouteRequest {
   task: string;
@@ -26,11 +32,32 @@ export interface PreparedRequest extends RouteRequest {
   strategy: Strategy;
 }
 export type ReasonCode =
-  | 'invalid_request' | 'invalid_schema' | 'invalid_candidate' | 'candidate_limit'
-  | 'unsupported_schema' | 'no_candidates' | 'low_confidence' | 'low_probability'
-  | 'low_margin' | 'model_escalated' | 'invalid_response' | 'provider_error'
-  | 'circuit_open' | 'cancelled' | 'timeout' | 'no_fallback';
-export type ProviderFailureCategory = 'authentication' | 'rate_limit' | 'network' | 'timeout' | 'malformed_response' | 'configuration' | 'unavailable' | 'cancelled' | 'unknown';
+  | 'invalid_request'
+  | 'invalid_schema'
+  | 'invalid_candidate'
+  | 'candidate_limit'
+  | 'unsupported_schema'
+  | 'no_candidates'
+  | 'low_confidence'
+  | 'low_probability'
+  | 'low_margin'
+  | 'model_escalated'
+  | 'invalid_response'
+  | 'provider_error'
+  | 'circuit_open'
+  | 'cancelled'
+  | 'timeout'
+  | 'no_fallback';
+export type ProviderFailureCategory =
+  | 'authentication'
+  | 'rate_limit'
+  | 'network'
+  | 'timeout'
+  | 'malformed_response'
+  | 'configuration'
+  | 'unavailable'
+  | 'cancelled'
+  | 'unknown';
 interface DecisionMetrics {
   failureCategory?: ProviderFailureCategory;
   confidence?: number;
@@ -40,8 +67,20 @@ interface DecisionMetrics {
   reuse?: 'cache' | 'inflight';
 }
 export type Decision =
-  | (DecisionMetrics & { status: 'selected'; source: 'jev' | 'gpt'; call: ToolCall; candidateId?: string; reason?: never })
-  | (DecisionMetrics & { status: 'escalate'; source: 'host' | 'none'; reason: ReasonCode; call?: never; candidateId?: never })
+  | (DecisionMetrics & {
+      status: 'selected';
+      source: 'jev' | 'gpt';
+      call: ToolCall;
+      candidateId?: string;
+      reason?: never;
+    })
+  | (DecisionMetrics & {
+      status: 'escalate';
+      source: 'host' | 'none';
+      reason: ReasonCode;
+      call?: never;
+      candidateId?: never;
+    })
   | (DecisionMetrics & { status: 'invalid'; source: 'none'; reason: ReasonCode; call?: never; candidateId?: never });
 export interface UsageRecord {
   provider: 'jev' | 'gpt';
@@ -70,8 +109,15 @@ export interface ChoiceAnswer {
   confidence: number;
   probabilities: Record<string, number>;
 }
-export interface ChoiceBatch { answers: ChoiceAnswer[]; usage: UsageRecord[] }
-export interface GenerationResult { call: ToolCall | null; candidateId?: string; usage: UsageRecord[] }
+export interface ChoiceBatch {
+  answers: ChoiceAnswer[];
+  usage: UsageRecord[];
+}
+export interface GenerationResult {
+  call: ToolCall | null;
+  candidateId?: string;
+  usage: UsageRecord[];
+}
 export interface ChoiceProvider {
   choose(requests: PreparedRequest[], signal: AbortSignal): Promise<ChoiceBatch>;
 }
@@ -132,3 +178,9 @@ export interface FusionConfig {
 }
 
 export const ESCALATE = '__escalate__';
+
+/** The routing surface the MCP server and the assist service depend on; FusionRouter implements it. */
+export interface RoutingService {
+  route(request: RouteRequest, signal?: AbortSignal): Promise<RouteResult>;
+  routeBatch(requests: RouteRequest[], signal?: AbortSignal): Promise<BatchResult>;
+}

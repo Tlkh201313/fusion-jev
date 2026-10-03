@@ -7,6 +7,6 @@
   "extensions": { "com.openai": { "interface": {
     "displayName": "Fusion Jev",
     "shortDescription": "Grounded evidence with recoverable compact output.",
-    "defaultPrompt": ["Prefer Fusion for supported inspection. Give fusion_assist a short goal; batch known operations through fusion_inspect. Jev selects validated IDs only.", "Host owns reasoning, edits, permissions and correctness. Run chosen commands through fusion-jev run -- program argv...; use RTK/native tools when unavailable or unsupported. Continue in the current host on escalation."]
+    "defaultPrompt": ["Use Fusion when output would be long or noisy or several files are involved: batch reads, outline/symbol/grep and Git evidence through fusion_inspect; give fusion_assist a short goal; expand receipts with fusion_evidence. Jev selects validated IDs only.", "Host owns reasoning, edits, permissions and correctness. Run tests, builds, lint, installs and log commands through fusion-jev run -- program argv... if installed globally, else npx -y fusion-jev@0.3.0 run -- program argv... (in PowerShell write '--'); use RTK/native tools when Fusion is unavailable or unsupported. Continue in the current host on escalation."]
   } } }
 }
