@@ -1,0 +1,12 @@
+case,command,kind,rawBytes,fusionBytes,byteReductionPercent,rawTokensBytesDiv4,fusionTokensBytesDiv4,rawTokensO200k,fusionTokensO200k,rawMedianMs,fusionMedianMs,rawExit,fusionExit,exitPreserved,markerInRaw,markerInFusion,rawOutputStableAcrossRuns,restore,verbatimEqualsRawRun,recoveredBytesMatchFusionOriginal,recoveredShaEqualsRawRun,recoveredEqualsRawModuloTimings,stdoutTruncated,stdoutRedacted,stderrTruncated,stderrRedacted
+npm-typecheck-pass,npm run typecheck,pass,60,87,-45,15,22,24,34,5123,5458,0,0,true,,,true,n/a (shown verbatim),true,,,,false,false,false,false
+tsc-fail-3-errors,node tsc -p .,fail,287,313,-9.1,72,79,88,97,876,1126,1,1,true,true,true,true,n/a (shown verbatim),true,,,,false,false,false,false
+tsc-fail-60-errors,node tsc -p .,fail,4995,711,85.8,1249,178,1620,301,861,5089,1,1,true,true,true,true,receipt,,true,true,true,false,false,false,false
+node-test-pass-setup,npx tsx --import ./test/offline-env.ts --test test/setup.test.ts,pass,700,728,-4,175,182,194,204,54831,57694,0,0,true,,,false,n/a (shown verbatim),false,,,,false,false,false,false
+node-test-fail-1-of-61,node --test math.test.mjs,fail,2611,459,82.4,653,115,1028,176,796,4698,1,1,true,true,true,false,receipt,,true,false,true,false,false,false,false
+git-log-50,git log -50,info,8996,205,97.7,2249,52,2571,81,194,2963,0,0,true,,,true,receipt,,true,true,true,false,false,false,false
+git-log-p-20,git log -p -n 20,info,1277810,259,100,319453,65,352840,102,255,3807,0,0,true,,,true,receipt,,false,false,false,false,true,false,false
+git-diff-head3-stat,git diff HEAD~3 --stat,info,2190,205,90.6,548,52,500,91,191,3522,0,0,true,,,true,receipt,,true,true,true,false,false,false,false
+readme-200-line-noise,node -e for (let i=0;i<200;i++) console.log('unchanged context '+i); console.error('src/example.ts:4:2 - error TS2322: fixture failure'); process.exitCode=2,fail,4341,321,92.6,1086,81,1216,135,229,3647,2,2,true,true,true,true,receipt,,true,true,true,false,false,false,false
+tiny-node-version,node --version,info,10,36,-260,3,9,7,16,141,492,0,0,true,,,true,n/a (shown verbatim),true,,,,false,false,false,false
+tiny-git-status,git status --short -- src,info,0,26,-Infinity,0,7,0,9,220,559,0,0,true,,,true,n/a (shown verbatim),true,,,,false,false,false,false
