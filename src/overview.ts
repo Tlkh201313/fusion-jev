@@ -104,3 +104,61 @@ export function dependencyEdges(path: string, lines: Array<{ number: number; tex
   }
   return { supported: true, edges, unresolved };
 }
+
+const sourceExtensions = ['.ts', '.tsx', '.mts', '.cts', '.js', '.jsx', '.mjs', '.cjs'];
+
+/**
+ * Source files behind package.json `bin`, `main`, `module`, `types` and `exports` targets, in that order.
+ * Built targets such as `dist/cli.js` map back to `src/cli.ts` when that file was discovered.
+ */
+export function manifestEntryPoints(manifest: string, discovered: Iterable<string>): string[] {
+  let json: any;
+  try { json = JSON.parse(manifest); } catch { return []; }
+  if (!json || typeof json !== 'object') return [];
+  const targets: string[] = [];
+  const collect = (value: unknown) => {
+    if (typeof value === 'string') targets.push(value);
+    else if (Array.isArray(value)) value.forEach(collect);
+    else if (value && typeof value === 'object') Object.values(value).forEach(collect);
+  };
+  collect(typeof json.bin === 'string' ? json.bin : json.bin && typeof json.bin === 'object' ? Object.values(json.bin) : undefined);
+  for (const key of ['main', 'module', 'exports', 'types', 'typings']) collect(json[key]);
+  const known = new Set(discovered);
+  const entries: string[] = [];
+  for (const target of targets) {
+    const relative = posix.normalize(target.replace(/\\/g, '/')).replace(/^\.\//, '');
+    if (relative.startsWith('..') || relative.startsWith('/')) continue;
+    const stem = relative.replace(/\.d\.[cm]?ts$/, '').replace(/\.[^./]+$/, '');
+    const stems = [stem, stem.replace(/^(?:dist|build|lib|out)\//, 'src/')];
+    const match = stems.flatMap(item => [item, ...sourceExtensions.map(ext => item + ext)]).find(candidate => known.has(candidate));
+    if (match && !entries.includes(match)) entries.push(match);
+  }
+  return entries;
+}
+
+const conventionalEntryStems = ['index', 'main', 'app', 'server', 'cli', 'mcp', 'router', 'workspace', 'validation', 'executor', 'config', 'oauth', 'jev', 'gpt', 'types'];
+
+/** Order sources so manifest entry points come first, then conventional entry/core names, then the rest by path. */
+export function rankSources(paths: string[], entryPoints: string[] = []): string[] {
+  const rank = (path: string) => {
+    const entry = entryPoints.indexOf(path);
+    if (entry >= 0) return entry - entryPoints.length;
+    const stem = (path.split('/').at(-1) ?? path).replace(/\.[^.]+$/, '').toLowerCase();
+    const index = conventionalEntryStems.indexOf(stem);
+    return index < 0 ? 100 : index;
+  };
+  return [...paths].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
+}
+
+/**
+ * One row per importing file. With `maxEdgesPerRow`, hub files (barrels) show their first edges and a count,
+ * so a single wide row cannot consume the budget meant for the whole module map.
+ */
+export function renderDependencyRows(rows: Array<{ path: string; edges: DependencyEdge[] }>, maxEdgesPerRow?: number): string {
+  return rows.filter(row => row.edges.length).map(row => {
+    const shown = maxEdgesPerRow === undefined ? row.edges : row.edges.slice(0, maxEdgesPerRow);
+    const more = row.edges.length - shown.length;
+    return `${row.path} -> ${shown.map(edge => `${edge.to}:${edge.line}${edge.kind === 'import' ? '' : ` (${edge.kind})`}`).join(', ')}`
+      + (more > 0 ? ` (+${more} more)` : '');
+  }).join('\n');
+}

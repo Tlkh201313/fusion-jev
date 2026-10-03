@@ -1,19 +1,16 @@
 #!/usr/bin/env node
 import { delimiter, dirname, isAbsolute, join } from 'node:path';
-import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { loadConfig } from './config.js';
-import { FusionRouter } from './router.js';
-import { JevProvider } from './providers/jev.js';
-import { mcpToolNames, startHttpServer, startStdioServer, validateHttpConfig } from './mcp.js';
-import { WorkspaceError, WorkspaceService } from './workspace.js';
-import { EvidenceStore } from './evidence.js';
-import { renderChannelSummary, summarizeChannel } from './command-summary.js';
-import { runCommand } from './run.js';
-import { prepareSetup } from './setup.js';
 import { fileURLToPath } from 'node:url';
-import { assertPrivatePath, preparePrivateDirectory } from './private-config.js';
-import { resolveUserConfigPath } from './config-path.js';
+import { EvidenceStore, type EvidenceReceipt } from './evidence.js';
+import { renderChannelSummary, summarizeChannel } from './command-summary.js';
+import { runCommand, type RunResult } from './run.js';
+import type { WorkspaceService } from './workspace.js';
+// Server, setup and provider modules (MCP SDK, zod, ajv, jose) load lazily so that
+// `fusion-jev run` and `fusion-jev evidence` do not pay for them on every call.
+let privateConfig: typeof import('./private-config.js');
+let configPath: typeof import('./config-path.js');
 
 const help = `Fusion Jev: local coding evidence and optional guarded choices
 
@@ -43,11 +40,57 @@ Source-checkout npm scripts load .env; the global fusion-jev command does not lo
 Provider keys are never returned to clients. See README.md and .env.example.
 `;
 
-function evidenceStore(): EvidenceStore {
+function evidenceStorageDir(): string {
   const base = process.platform === 'win32' ? process.env.LOCALAPPDATA :
     process.env.XDG_CACHE_HOME ?? join(homedir(), '.cache');
   if (!base || !isAbsolute(base)) throw new Error('Fusion evidence cache directory must be absolute');
-  return new EvidenceStore({ storageDir: join(base, 'fusion-jev-mcp', 'evidence') });
+  return join(base, 'fusion-jev-mcp', 'evidence');
+}
+
+function evidenceStore(storageDir = evidenceStorageDir()): EvidenceStore {
+  return new EvidenceStore({ storageDir });
+}
+
+/** Combined captured bytes at or below this print verbatim with one status line. */
+const VERBATIM_LIMIT = 1024;
+
+async function readReceipt(store: EvidenceStore, receipt: EvidenceReceipt): Promise<Buffer> {
+  const chunks: Buffer[] = [];
+  let startByte = 0;
+  while (startByte < receipt.storedBytes) {
+    const page = await store.expand({ id: receipt.id, startByte, maxBytes: 64 * 1024 });
+    if (page.status !== 'ok' && page.status !== 'stale') throw new Error(`Evidence ${page.status}`);
+    chunks.push(Buffer.from(page.dataBase64, 'base64'));
+    if (page.nextByte === null) break;
+    startByte = page.nextByte;
+  }
+  return Buffer.concat(chunks);
+}
+
+function utf8(bytes: Buffer): boolean {
+  try { new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes); return true; } catch { return false; }
+}
+
+const emptyChannel = (receipt: EvidenceReceipt) => receipt.storedBytes === 0 && receipt.originalBytes === 0 && !receipt.truncated && !receipt.redacted;
+
+function channelFields(name: 'stdout' | 'stderr', receipt: EvidenceReceipt): string {
+  if (emptyChannel(receipt)) return '';
+  return ` ${name}=${receipt.id} ${name}StoredBytes=${receipt.storedBytes}` +
+    (receipt.originalBytes === receipt.storedBytes ? '' : ` ${name}OriginalBytes=${receipt.originalBytes ?? 'null'}`) +
+    (receipt.truncated ? ` ${name}Truncated=true` : '') + (receipt.redacted ? ` ${name}Redacted=true` : '');
+}
+
+function recoverCommand(): { command?: string } {
+  // Name the copy that wrote the receipt: the pinned npx form when running from the npx cache,
+  // the installed bin when one is on PATH, else the exact argv of this CLI.
+  const self = fileURLToPath(import.meta.url);
+  if (self.split(/[\\/]/).includes('_npx'))
+    return { command: `npx -y fusion-jev@${JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version} evidence` };
+  const names = process.platform === 'win32' ? ['fusion-jev.cmd', 'fusion-jev.exe', 'fusion-jev'] : ['fusion-jev'];
+  for (const dir of (process.env.PATH ?? process.env.Path ?? '').split(delimiter)) {
+    if (dir && isAbsolute(dir) && names.some(name => existsSync(join(dir, name)))) return { command: 'fusion-jev evidence' };
+  }
+  return {};
 }
 
 function positiveInteger(value: string, label: string, minimum = 1): number {
@@ -55,6 +98,44 @@ function positiveInteger(value: string, label: string, minimum = 1): number {
   const parsed = Number(value);
   if (!Number.isSafeInteger(parsed) || parsed < minimum) throw new Error(`Invalid ${label}`);
   return parsed;
+}
+
+async function writeCompact(result: RunResult, memory: EvidenceStore, storageDir: string): Promise<void> {
+  const [stdoutBytes, stderrBytes] = [await readReceipt(memory, result.stdout), await readReceipt(memory, result.stderr)];
+  const complete = (receipt: EvidenceReceipt) => !receipt.truncated && !receipt.redacted && receipt.originalBytes === receipt.storedBytes;
+  if (result.termination === 'exit' && !result.cleanupFailed && complete(result.stdout) && complete(result.stderr)
+    && stdoutBytes.length + stderrBytes.length <= VERBATIM_LIMIT && utf8(stdoutBytes) && utf8(stderrBytes)) {
+    // Everything was captured and is shown in full: nothing needs a receipt or recovery.
+    if (stderrBytes.length) process.stderr.write(stderrBytes);
+    const separator = stdoutBytes.length && stdoutBytes[stdoutBytes.length - 1] !== 10 ? '\n' : '';
+    process.stdout.write(Buffer.concat([stdoutBytes, Buffer.from(`${separator}exitCode=${result.exitCode} durationMs=${Math.round(result.durationMs)}\n`)]));
+    return;
+  }
+  // Persist only channels with content into the verified-private store; empty channels need no receipt.
+  let store: EvidenceStore | undefined;
+  const persist = (receipt: EvidenceReceipt, bytes: Buffer): EvidenceReceipt => {
+    if (emptyChannel(receipt)) return receipt;
+    store ??= evidenceStore(storageDir);
+    return store.capture({ source: receipt.source, bytes, originalBytes: receipt.originalBytes, truncated: receipt.truncated, redacted: receipt.redacted });
+  };
+  const stdout = persist(result.stdout, stdoutBytes), stderr = persist(result.stderr, stderrBytes);
+  process.stdout.write(`termination=${result.termination} exitCode=${result.exitCode ?? 'null'}` +
+    (result.signal ? ` signal=${result.signal}` : '') + (result.errorCode ? ` errorCode=${result.errorCode}` : '') +
+    ` durationMs=${Math.round(result.durationMs)}${channelFields('stdout', stdout)}${channelFields('stderr', stderr)}` +
+    (result.cleanupFailed ? ' cleanupFailed=true' : '') + '\n');
+  const summaries = {
+    stdout: store && !emptyChannel(stdout) ? await summarizeChannel(store, stdout) : undefined,
+    stderr: store && !emptyChannel(stderr) ? await summarizeChannel(store, stderr) : undefined,
+  };
+  if (summaries.stdout) process.stdout.write(renderChannelSummary(summaries.stdout));
+  if (summaries.stderr) process.stderr.write(renderChannelSummary(summaries.stderr));
+  // One recovery line per channel whose bytes were not shown in full.
+  const recover = recoverCommand();
+  for (const [name, receipt, summary] of [['Stdout', stdout, summaries.stdout], ['Stderr', stderr, summaries.stderr]] as const) {
+    if (!summary || (summary.omittedBytes === 0 && !summary.unavailable)) continue;
+    process.stdout.write(recover.command ? `recover${name}=${recover.command} ${receipt.id} --raw\n`
+      : `recover${name}Argv=${JSON.stringify([process.execPath, fileURLToPath(import.meta.url), 'evidence', receipt.id, '--raw'])}\n`);
+  }
 }
 
 async function runCli(args: string[]): Promise<void> {
@@ -76,26 +157,18 @@ async function runCli(args: string[]): Promise<void> {
   const argv = args.slice(separator + 1) as [string, ...string[]];
   if (!argv[0]) throw new Error('Usage: fusion-jev run [options] -- program argv...');
   // Raw output already reaches the host byte-for-byte and publishes no receipts.
-  // Do not pay for persistent evidence initialization or write unreachable captures.
-  const store = raw ? new EvidenceStore() : evidenceStore();
+  // Compact runs capture in memory first: output that is small enough to show in full
+  // needs no receipt, so the private disk store (and its Windows ACL verification) is
+  // opened only when something must stay recoverable. Every disk write still happens
+  // after that verification, exactly as before.
+  const storageDir = raw ? undefined : evidenceStorageDir();
+  const memory = new EvidenceStore();
   const controller = new AbortController();
   const cancel = () => controller.abort();
   process.once('SIGINT', cancel); process.once('SIGTERM', cancel);
   try {
-    const result = await runCommand({ argv, cwd, timeoutMs, maxCaptureBytes, raw }, store, controller.signal);
-    if (!raw) {
-      const stdout = await summarizeChannel(store, result.stdout);
-      const stderr = await summarizeChannel(store, result.stderr);
-      process.stdout.write(`termination=${result.termination} exitCode=${result.exitCode ?? 'null'} stdout=${result.stdout.id} stdoutTruncated=${result.stdout.truncated} stdoutRedacted=${result.stdout.redacted} stdoutStoredBytes=${result.stdout.storedBytes} stdoutOriginalBytes=${result.stdout.originalBytes ?? 'null'} stderr=${result.stderr.id} stderrTruncated=${result.stderr.truncated} stderrRedacted=${result.stderr.redacted} stderrStoredBytes=${result.stderr.storedBytes} stderrOriginalBytes=${result.stderr.originalBytes ?? 'null'} durationMs=${Math.round(result.durationMs)} cleanupFailed=${Boolean(result.cleanupFailed)}\n`);
-      process.stdout.write(renderChannelSummary(stdout));
-      process.stderr.write(renderChannelSummary(stderr));
-      // Name the copy that wrote the receipt: the pinned npx form when running from the npx cache, else the installed bin.
-      // The Argv lines below are the exact-path alternative.
-      const recover = fileURLToPath(import.meta.url).split(/[\\/]/).includes('_npx')
-        ? `npx -y fusion-jev@${JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version} evidence` : 'fusion-jev evidence';
-      process.stdout.write(`recoverStdout=${recover} ${result.stdout.id} --raw\nrecoverStderr=${recover} ${result.stderr.id} --raw\n`);
-      process.stdout.write(`recoverStdoutArgv=${JSON.stringify([process.execPath, fileURLToPath(import.meta.url), 'evidence', result.stdout.id, '--raw'])}\nrecoverStderrArgv=${JSON.stringify([process.execPath, fileURLToPath(import.meta.url), 'evidence', result.stderr.id, '--raw'])}\n`);
-    }
+    const result = await runCommand({ argv, cwd, timeoutMs, maxCaptureBytes, raw }, memory, controller.signal);
+    if (!raw) await writeCompact(result, memory, storageDir!);
     process.exitCode = result.termination === 'exit' ? result.exitCode ?? 1 :
       result.termination === 'timeout' ? 124 : result.termination === 'cancelled' ? 130 :
       result.termination === 'spawn_error' ? 127 : 128;
@@ -132,7 +205,7 @@ async function evidenceCli(args: string[]): Promise<void> {
 }
 
 function userConfigPath(): string {
-  return resolveUserConfigPath();
+  return configPath.resolveUserConfigPath();
 }
 
 function configuredWorkspaceRoots(): { defaultRoot: string; allowedRoots: Set<string> } {
@@ -152,8 +225,8 @@ function savedEnvFile(): string | undefined {
   const path = userConfigPath();
   if (!existsSync(path)) return undefined;
   try {
-    assertPrivatePath(dirname(path), true);
-    assertPrivatePath(path, false);
+    privateConfig.assertPrivatePath(dirname(path), true);
+    privateConfig.assertPrivatePath(path, false);
     const data: unknown = JSON.parse(readFileSync(path, 'utf8'));
     if (typeof data !== 'object' || data === null || !('envFile' in data) ||
       typeof data.envFile !== 'string' || !isAbsolute(data.envFile)) throw new Error();
@@ -172,10 +245,10 @@ function configureEnvFile(value: string | undefined): void {
   if (!isAbsolute(value)) throw new Error('Env file path must be absolute');
   let resolved: string;
   try {
-    resolved = assertPrivatePath(value, false);
+    resolved = privateConfig.assertPrivatePath(value, false);
   } catch { throw new Error('Configured env file is unavailable or invalid'); }
-  preparePrivateDirectory(dirname(configPath));
-  if (existsSync(configPath)) assertPrivatePath(configPath, false);
+  privateConfig.preparePrivateDirectory(dirname(configPath));
+  if (existsSync(configPath)) privateConfig.assertPrivatePath(configPath, false);
   writeFileSync(configPath, JSON.stringify({ envFile: resolved }) + '\n', { mode: 0o600 });
   process.stdout.write('Saved Fusion env-file path for future commands.\n');
 }
@@ -183,6 +256,8 @@ function configureEnvFile(value: string | undefined): void {
 async function main(): Promise<void> {
   if (process.argv[2] === 'run') { await runCli(process.argv.slice(3)); return; }
   if (process.argv[2] === 'evidence') { await evidenceCli(process.argv.slice(3)); return; }
+  [privateConfig, configPath] = await Promise.all([import('./private-config.js'), import('./config-path.js')]);
+  const { prepareSetup } = await import('./setup.js');
   const args = process.argv.slice(2).filter(arg => !arg.startsWith('--provider-env='));
   const envFileArgs = process.argv.slice(2).filter(arg => arg.startsWith('--provider-env='));
   if (envFileArgs.length > 1) throw new Error('Specify --env-file only once');
@@ -205,11 +280,13 @@ async function main(): Promise<void> {
     (process.env.FUSION_ENV_FILE !== undefined ? process.env.FUSION_ENV_FILE : savedEnvFile());
   if (envFile) {
     if (!isAbsolute(envFile)) throw new Error('Env file path must be absolute');
-    try { process.loadEnvFile(assertPrivatePath(envFile, false)); }
+    try { process.loadEnvFile(privateConfig.assertPrivatePath(envFile, false)); }
     catch { throw new Error('Configured env file is unavailable or invalid'); }
   }
   const command = args[0] ?? 'stdio';
   if (!['stdio', 'http', 'doctor', 'config'].includes(command) || (command === 'config' && args[1] !== 'doctor')) throw new Error('Unknown command; run fusion-jev --help');
+  const [{ loadConfig }, { FusionRouter }, { JevProvider }, { mcpToolNames, startHttpServer, startStdioServer, validateHttpConfig }, { WorkspaceError, WorkspaceService: Workspace }] =
+    await Promise.all([import('./config.js'), import('./router.js'), import('./providers/jev.js'), import('./mcp.js'), import('./workspace.js')]);
   const config = loadConfig();
   if (config.routing.fallback !== 'host') throw new Error('The MCP CLI uses the current Codex or ChatGPT host for GPT reasoning; set FUSION_FALLBACK=host.');
   const httpWorkspace = process.env.FUSION_WORKSPACE_ROOT;
@@ -224,7 +301,7 @@ async function main(): Promise<void> {
     if (mode === 'http') validateHttpConfig(config);
     if (mode === 'http' && exposeHttpWorkspace && httpWorkspace) {
       if (!isAbsolute(httpWorkspace)) throw new Error('FUSION_WORKSPACE_ROOT must be absolute for HTTP');
-      new WorkspaceService(httpWorkspace, { route: async () => { throw new Error('Diagnostic mode cannot route'); } });
+      new Workspace(httpWorkspace, { route: async () => { throw new Error('Diagnostic mode cannot route'); } });
     }
     process.stdout.write(JSON.stringify({ status: 'ready', localTools: 'available', mode,
       profile: config.mcpProfile,
@@ -250,7 +327,7 @@ async function main(): Promise<void> {
         catch { throw new WorkspaceError('INVALID_PATH', 'Workspace root is unavailable'); }
         const cached = workspaces.get(key);
         if (cached) { workspaces.delete(key); workspaces.set(key, cached); return cached; }
-        const service = new WorkspaceService(key, router);
+        const service = new Workspace(key, router);
         if (!allowedRoots.has(service.root))
           throw new WorkspaceError('INVALID_PATH', 'Workspace root is not approved for this server');
         workspaces.set(key, service);
@@ -261,7 +338,7 @@ async function main(): Promise<void> {
     process.once('SIGINT', close); process.once('SIGTERM', close);
   } else {
     if (exposeHttpWorkspace && httpWorkspace && !isAbsolute(httpWorkspace)) throw new Error('FUSION_WORKSPACE_ROOT must be absolute for HTTP');
-    const workspace = exposeHttpWorkspace && httpWorkspace ? new WorkspaceService(httpWorkspace, router) : undefined;
+    const workspace = exposeHttpWorkspace && httpWorkspace ? new Workspace(httpWorkspace, router) : undefined;
     const server = await startHttpServer({ router, config, workspace, signal: controller.signal });
     process.stderr.write(`Fusion HTTP listening on port ${(server.address() as { port: number }).port}\n`);
     const close = () => { controller.abort(); server.close(); server.closeAllConnections(); };

@@ -28,13 +28,13 @@ No. It does not intercept native tools. Your host chooses when to call it, and h
 ## Using it
 
 **How do I recover the full output?**
-Copy a receipt ID from the compact result, then run `npx -y fusion-jev evidence ID --raw` (or `fusion-jev evidence ID --raw` after a global install) or call `fusion_evidence`. Do it within 10 minutes. See [how it works](how-it-works.md#receipt-lifecycle).
+Run the `recoverStdout=` or `recoverStderr=` command printed in the compact result, or copy a receipt ID and run `npx -y fusion-jev evidence ID --raw` (or `fusion-jev evidence ID --raw` after a global install) or call `fusion_evidence`. Do it within 10 minutes. See [how it works](how-it-works.md#receipt-lifecycle).
 
 **Why did recovery say `expired` or `missing`?**
 The receipt passed its 10-minute expiry or was evicted (the store keeps at most 128 receipts and 32 MiB). The CLI and MCP server must also run as the same user to share one store.
 
 **When should I use `--raw`?**
-For small output you want verbatim. `run --raw` prints the output directly and creates no receipt.
+When you want output streamed byte-for-byte as it is produced, whatever its size. `run --raw` prints the output directly and creates no receipt. You do not need it for small output: `run` already prints results of 1 KiB or less verbatim with one status line.
 
 **The tools do not show up in my host.**
 Reload the MCP connection or start a fresh session, then run `npx -y fusion-jev doctor stdio`. More in [install troubleshooting](install.md#troubleshooting).

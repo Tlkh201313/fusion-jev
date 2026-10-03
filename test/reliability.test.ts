@@ -34,7 +34,8 @@ test('CLI command receipts expand through a separate stdio MCP process', async t
   const env = { ...process.env, LOCALAPPDATA: cache, XDG_CACHE_HOME: cache, FUSION_CONFIG_HOME: cache,
     TYPESAFE_API_KEY: '', FUSION_ENV_FILE: '', FUSION_FALLBACK: 'host', FUSION_MCP_PROFILE: 'assist' };
   const command = spawnSync(process.execPath, ['--import', tsx, cli, 'run', '--', process.execPath,
-    '-e', 'process.stdout.write("recover me exactly\\n")'], { encoding: 'utf8', env });
+    // Output above the 1 KiB verbatim limit is persisted with a receipt; tiny complete output is printed in full.
+    '-e', 'process.stdout.write("recover me exactly\\n".repeat(80))'], { encoding: 'utf8', env });
   assert.equal(command.status, 0, command.stderr);
   const id = /stdout=([\da-f-]{36})/.exec(command.stdout)?.[1];
   assert.ok(id, command.stdout);
@@ -44,7 +45,7 @@ test('CLI command receipts expand through a separate stdio MCP process', async t
   const result = await client.callTool({ name: 'fusion_evidence', arguments: { action: 'get', id } });
   const page = result.structuredContent as any;
   assert.equal(page.status, 'ok');
-  assert.equal(Buffer.from(page.dataBase64, 'base64').toString(), 'recover me exactly\n');
+  assert.equal(Buffer.from(page.dataBase64, 'base64').toString(), 'recover me exactly\n'.repeat(80));
   const utf8 = await client.callTool({ name: 'fusion_evidence', arguments: { action: 'get', id, format: 'utf8' } });
   assert.equal(utf8.isError, undefined);
   assert.equal((utf8.structuredContent as any).encoding, 'utf8');
@@ -52,7 +53,7 @@ test('CLI command receipts expand through a separate stdio MCP process', async t
   assert.equal((utf8.structuredContent as any).preview, undefined);
   assert.match((utf8.content as any)[0].text, /recover me exactly\n$/);
   const unicode = spawnSync(process.execPath, ['--import', tsx, cli, 'run', '--', process.execPath,
-    '-e', 'process.stdout.write("\\uFEFF🔬\\n")'], { encoding: 'utf8', env });
+    '-e', 'process.stdout.write("\\uFEFF🔬\\n".repeat(200))'], { encoding: 'utf8', env });
   const unicodeId = /stdout=([\da-f-]{36})/.exec(unicode.stdout)?.[1];
   assert.ok(unicodeId);
   const exactText = await client.callTool({ name: 'fusion_evidence', arguments: { action: 'get', id: unicodeId, format: 'utf8' } });

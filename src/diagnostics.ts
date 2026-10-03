@@ -26,28 +26,55 @@ export function scanDiagnostics(input: { text: string; sourceEvidenceId: string;
   const found: Diagnostic[] = [];
   let total = 0;
   const add = (diagnostic: Diagnostic) => { total++; if (found.length < maxDiagnostics) found.push(diagnostic); };
-  let startByte = 0;
   const lines = input.text.split(/(?<=\n)/);
-  for (const [index, line] of lines.entries()) {
-    const body = line.replace(/\r?\n$/, '');
-    if (/^not ok \d+ - .*#\s*(?:TODO|SKIP)\b/i.test(body)) { startByte += Buffer.byteLength(line); continue; }
-    const next = lines[index + 1]?.replace(/\r?\n$/, '') ?? '';
+  const bodies = lines.map(line => line.replace(/\r?\n$/, ''));
+  const offsets: number[] = [];
+  for (let at = 0, index = 0; index < lines.length; at += Buffer.byteLength(lines[index]!), index++) offsets.push(at);
+  // node:test spec reporter repeats each failure with its error under "✖ failing tests:"; prefer that block.
+  const summaryAt = bodies.indexOf('✖ failing tests:');
+  let hunk = false, commit = false;
+  for (let index = 0; index < lines.length; index++) {
+    const body = bodies[index]!, startByte = offsets[index]!;
+    const endByte = startByte + Buffer.byteLength(body);
+    // Diff hunks and git log message bodies are historical text, never current diagnostics.
+    if (/^commit [0-9a-f]{7,64}\b/.test(body)) { commit = true; hunk = false; continue; }
+    if (/^diff --git /.test(body)) { commit = false; hunk = false; continue; }
+    if (/^@@@? -\d+(?:,\d+)? /.test(body)) { commit = false; hunk = true; continue; }
+    if (hunk && /^(?:[-+ \\]|$)/.test(body)) continue;
+    hunk = false;
+    if (commit && /^ {4}/.test(body)) continue;
+    if (/^not ok \d+ - .*#\s*(?:TODO|SKIP)\b/i.test(body)) continue;
+    const spec = /^\s*✖ (.+?)(?: \([\d.]+m?s\))?$/.exec(body);
+    if (spec && index !== summaryAt) {
+      if (index < summaryAt) continue;
+      if (summaryAt < 0) { add({ severity: 'error', message: spec[1]!, evidenceId: input.sourceEvidenceId, startByte, endByte }); continue; }
+      const detail: string[] = [];
+      let frame: RegExpExecArray | undefined, stack = false, end = index + 1;
+      for (; end < lines.length && (!bodies[end] || /^\s/.test(bodies[end]!)); end++) {
+        const text = bodies[end]!.trim(), at = /^at (?:.+ \()?(.+?):(\d+):(\d+)\)?$/.exec(text);
+        if (at) { stack = true; if (!frame && !at[1]!.startsWith('node:')) frame = at; }
+        else if (text && !stack && detail.length < 3) detail.push(text);
+      }
+      const where = frame ?? /^test at (.+):(\d+):(\d+)$/.exec(bodies[index - 1] ?? '') ?? undefined;
+      const file = where?.[1]?.startsWith('file:') ? fileURLToPath(where[1]) : where?.[1];
+      add({ severity: 'error', message: detail.length ? `${spec[1]}: ${detail.join(' ')}` : spec[1]!,
+        ...(where ? { file, line: Number(where[2]), column: Number(where[3]) } : {}), evidenceId: input.sourceEvidenceId, startByte, endByte });
+      index = end - 1;
+      continue;
+    }
+    const next = bodies[index + 1] ?? '';
     const node = /^Error:\s*(.+)$/.exec(body);
     const nodeLocation = /^\s+at .+\((.+):(\d+):(\d+)\)$/.exec(next);
     if (node && nodeLocation) {
       add({ severity: 'error', message: node[1]!, file: nodeLocation[1], line: Number(nodeLocation[2]),
-        column: Number(nodeLocation[3]), evidenceId: input.sourceEvidenceId,
-        startByte, endByte: startByte + Buffer.byteLength(body) });
-      startByte += Buffer.byteLength(line);
+        column: Number(nodeLocation[3]), evidenceId: input.sourceEvidenceId, startByte, endByte });
       continue;
     }
     const rust = /^error(?:\[[^\]]+\])?:\s*(.+)$/.exec(body);
     const rustLocation = /^\s*-->\s*(.+\.rs):(\d+):(\d+)$/.exec(next);
     if (rust && rustLocation) {
       add({ severity: 'error', message: rust[1]!, file: rustLocation[1], line: Number(rustLocation[2]),
-        column: Number(rustLocation[3]), evidenceId: input.sourceEvidenceId,
-        startByte, endByte: startByte + Buffer.byteLength(body) });
-      startByte += Buffer.byteLength(line);
+        column: Number(rustLocation[3]), evidenceId: input.sourceEvidenceId, startByte, endByte });
       continue;
     }
     for (const pattern of patterns) {
@@ -58,10 +85,9 @@ export function scanDiagnostics(input: { text: string; sourceEvidenceId: string;
       const severity = rawSeverity === 'warning' ? 'warning' : rawSeverity === 'info' || rawSeverity === 'note' ? 'info' : 'error';
       add({ severity, message: groups.message!, file: groups.file,
         ...(groups.line ? { line: Number(groups.line) } : {}), ...(groups.column ? { column: Number(groups.column) } : {}),
-        evidenceId: input.sourceEvidenceId, startByte, endByte: startByte + Buffer.byteLength(body) });
+        evidenceId: input.sourceEvidenceId, startByte, endByte });
       break;
     }
-    startByte += Buffer.byteLength(line);
   }
   return { diagnostics: found, total };
 }
@@ -101,4 +127,5 @@ export function discoverChecks(root: string, manifest: ReadonlyArray<{ path: str
 }
 import { createHash } from 'node:crypto';
 import { basename, dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 

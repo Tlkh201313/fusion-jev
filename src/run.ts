@@ -15,6 +15,7 @@ export interface RunResult {
 }
 
 const MAX_CAPTURE = 8 * 1024 * 1024;
+const DEFERRED_SNAPSHOT_MS = 1000;
 
 interface WindowsIdentity { pid: number; startTicks: string }
 
@@ -75,8 +76,9 @@ if ($failed) { exit 1 }
 exit 0
 `;
 
-function runWindowsHelper(script: string, environment: Record<string, string>): Promise<string | undefined> {
+function runWindowsHelper(script: string, environment: Record<string, string>, signal?: AbortSignal): Promise<string | undefined> {
   return new Promise(resolve => {
+    if (signal?.aborted) { resolve(undefined); return; }
     const systemRoot = process.env.SystemRoot ?? 'C:\\Windows';
     const command = join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
     const helper = nodeSpawn(command, ['-NoProfile', '-NonInteractive', '-Command', script], {
@@ -89,8 +91,12 @@ function runWindowsHelper(script: string, environment: Record<string, string>): 
       if (done) return;
       done = true;
       clearTimeout(timer);
+      signal?.removeEventListener('abort', onAbort);
       resolve(value);
     };
+    // A read-only helper whose answer is no longer needed must not hold the CLI open.
+    const onAbort = () => { helper.kill('SIGKILL'); finish(undefined); };
+    signal?.addEventListener('abort', onAbort, { once: true });
     const timer = setTimeout(() => { helper.kill('SIGKILL'); finish(undefined); }, 3500);
     helper.stdout?.on('data', (chunk: Buffer) => {
       if (output.length + chunk.length > 64 * 1024) { helper.kill('SIGKILL'); finish(undefined); }
@@ -101,8 +107,8 @@ function runWindowsHelper(script: string, environment: Record<string, string>): 
   });
 }
 
-export async function snapshotWindowsTree(rootPid: number): Promise<WindowsIdentity[] | undefined> {
-  const output = await runWindowsHelper(WINDOWS_TREE_SNAPSHOT, { FUSION_RUN_ROOT_PID: String(rootPid) });
+export async function snapshotWindowsTree(rootPid: number, signal?: AbortSignal): Promise<WindowsIdentity[] | undefined> {
+  const output = await runWindowsHelper(WINDOWS_TREE_SNAPSHOT, { FUSION_RUN_ROOT_PID: String(rootPid) }, signal);
   if (!output) return undefined;
   try {
     const value: unknown = JSON.parse(output);
@@ -160,13 +166,13 @@ export function canTrustWindowsRoot(child: Pick<ChildProcess, 'exitCode' | 'sign
   return !exitObserved && child.exitCode === null && child.signalCode === null;
 }
 
-async function killTree(child: ChildProcess, identitySnapshot: Promise<WindowsIdentity[] | undefined>, canTrustRoot: () => boolean): Promise<boolean> {
+async function killTree(child: ChildProcess, identitySnapshot: () => Promise<WindowsIdentity[] | undefined>, canTrustRoot: () => boolean): Promise<boolean> {
   if (!child.pid) return false;
   if (process.platform !== 'win32') {
     try { process.kill(-child.pid, 'SIGKILL'); return true; }
     catch { try { child.kill('SIGKILL'); return true; } catch { return false; } }
   }
-  return cleanupWindowsTree(child.pid, identitySnapshot, canTrustRoot);
+  return cleanupWindowsTree(child.pid, identitySnapshot(), canTrustRoot);
 }
 
 function errorCode(error: Error): RunResult['errorCode'] {
@@ -237,23 +243,37 @@ export async function runCommand(input: RunInput, evidence: EvidenceStore, signa
     let exitObserved = false;
     child.once('exit', () => { exitObserved = true; });
     const rootIsLive = () => canTrustWindowsRoot(child, exitObserved);
-    const identitySnapshot = process.platform === 'win32' && (input.timeoutMs !== undefined || signal !== undefined) && child.pid && rootIsLive()
-      ? captureWindowsIdentity(() => snapshotWindowsTree(child.pid!), rootIsLive).then(async first => {
-        if (!first) return undefined;
-        // One later snapshot records descendants spawned just after the root.
-        // This is bounded to two queries rather than a persistent CIM poll.
-        await new Promise<void>(resolve => { const timer = setTimeout(resolve, 200); timer.unref(); });
-        const second = await captureWindowsIdentity(() => snapshotWindowsTree(child.pid!), rootIsLive);
-        if (!second) return first;
-        const merged = new Map(first.map(item => [item.pid, item]));
-        for (const item of second) {
-          const prior = merged.get(item.pid);
-          if (prior && prior.startTicks !== item.startTicks) return undefined;
-          merged.set(item.pid, item);
-        }
-        return [...merged.values()];
-      })
-      : Promise.resolve(undefined);
+    // Snapshots only serve a later timeout or cancellation cleanup. Once the run settles
+    // (cleanup, if any, has already been awaited) pending snapshot helpers are stopped.
+    const snapshotHelpers = new AbortController();
+    const takeSnapshots = () => captureWindowsIdentity(() => snapshotWindowsTree(child.pid!, snapshotHelpers.signal), rootIsLive).then(async first => {
+      if (!first || snapshotHelpers.signal.aborted) return first;
+      // One later snapshot records descendants spawned just after the root.
+      // This is bounded to two queries rather than a persistent CIM poll.
+      await new Promise<void>(resolve => { const timer = setTimeout(resolve, 200); timer.unref(); });
+      const second = await captureWindowsIdentity(() => snapshotWindowsTree(child.pid!, snapshotHelpers.signal), rootIsLive);
+      if (!second) return first;
+      const merged = new Map(first.map(item => [item.pid, item]));
+      for (const item of second) {
+        const prior = merged.get(item.pid);
+        if (prior && prior.startTicks !== item.startTicks) return undefined;
+        merged.set(item.pid, item);
+      }
+      return [...merged.values()];
+    });
+    let identitySnapshot: Promise<WindowsIdentity[] | undefined> | undefined;
+    let deferredSnapshot: ReturnType<typeof setTimeout> | undefined;
+    const startSnapshots = () => {
+      if (deferredSnapshot) clearTimeout(deferredSnapshot);
+      return identitySnapshot ??= takeSnapshots();
+    };
+    if (process.platform !== 'win32' || !child.pid || !rootIsLive() || (input.timeoutMs === undefined && signal === undefined))
+      identitySnapshot = Promise.resolve(undefined);
+    else if (input.timeoutMs !== undefined) startSnapshots();
+    // A cancellation-only run (the CLI's Ctrl+C handler) defers the PowerShell snapshot so short
+    // commands never compete with it for CPU. A cancellation before the delay snapshots the
+    // still-live root on demand; a root that already exited fails closed as before.
+    else deferredSnapshot = setTimeout(startSnapshots, DEFERRED_SNAPSHOT_MS);
     let reason: 'timeout' | 'cancelled' | undefined;
     let launchedError: Error | undefined;
     let cleanupFailed = false;
@@ -265,13 +285,15 @@ export async function runCommand(input: RunInput, evidence: EvidenceStore, signa
       settled = true;
       if (timer) clearTimeout(timer);
       if (forced) clearTimeout(forced);
+      if (deferredSnapshot) clearTimeout(deferredSnapshot);
+      snapshotHelpers.abort();
       signal?.removeEventListener('abort', onAbort);
       try { resolve(finish(fields, incomplete)); } catch (error) { reject(error); }
     };
     const stop = (why: 'timeout' | 'cancelled') => {
       if (reason || launchedError) return;
       reason = why;
-      cleanup = killTree(child, identitySnapshot, rootIsLive).then(ok => {
+      cleanup = killTree(child, startSnapshots, rootIsLive).then(ok => {
         if (!ok) {
           cleanupFailed = true;
           try { child.kill('SIGKILL'); } catch { /* The direct child may already have exited. */ }

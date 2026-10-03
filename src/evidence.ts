@@ -2,8 +2,8 @@ import { createHash, randomUUID } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
-import Database from 'better-sqlite3';
-import { safeWorkspaceBytes } from './workspace.js';
+import { createRequire } from 'node:module';
+import type Database from 'better-sqlite3';
 
 export type EvidenceSource =
   | { kind: 'workspace'; root: string; path: string }
@@ -25,6 +25,11 @@ const MAX_PAGE = 64 * 1024;
 const DEFAULT_PAGE = 16 * 1024;
 const MAX_DISK_FILE = 12 * 1024 * 1024;
 const EXCLUDED = new Set(['.git', 'node_modules', 'dist', '.next', '.ssh', '.aws', '.azure', '.gnupg', '.codex', '.npmrc']);
+// The native SQLite binding is loaded only when a persistent store is opened, so
+// in-memory stores (fusion-jev run --raw and small complete outputs) skip its cost.
+let sqlite: typeof Database | undefined;
+const openDatabase = (path: string): Database.Database =>
+  new (sqlite ??= createRequire(import.meta.url)('better-sqlite3') as typeof Database)(path);
 const hash = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
 type ResearchSource = Extract<EvidenceSource, { kind: 'research' }>;
 function sameResearchSource(left: ResearchSource, right: ResearchSource): boolean {
@@ -327,7 +332,7 @@ export class EvidenceStore {
   }
 
   private withProvenanceDb<T>(work: (db: Database.Database) => T): T {
-    const db = new Database(join(this.storageDir!, 'research-provenance.sqlite'));
+    const db = openDatabase(join(this.storageDir!, 'research-provenance.sqlite'));
     try {
       db.pragma('busy_timeout = 5000');
       db.exec('CREATE TABLE IF NOT EXISTS provenance (key TEXT PRIMARY KEY, id TEXT NOT NULL, sha256 TEXT NOT NULL, expiresAt INTEGER NOT NULL)');
@@ -753,6 +758,8 @@ export class EvidenceStore {
     const end = Math.min(entry.bytes.length, startByte + maxBytes);
     let status: 'ok' | 'stale' = 'ok';
     if (entry.receipt.source.kind === 'workspace') {
+      // Loaded on demand: workspace.js pulls in the tool executor and ajv, which command receipts never need.
+      const { safeWorkspaceBytes } = await import('./workspace.js');
       try {
         const actual = canonicalWorkspace(entry.receipt.source.root, entry.receipt.source.path);
         if (actual !== entry.canonicalPath || hash(await safeWorkspaceBytes(entry.receipt.source.root, actual)) !== entry.sourceHash) status = 'stale';

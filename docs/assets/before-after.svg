@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="620" viewBox="0 0 1200 620" role="img" aria-labelledby="t d">
   <title id="t">Before and after Fusion Jev</title>
-  <desc id="d">Left, without Fusion: a terminal with 200 lines of unchanged context and one real TypeScript error at the bottom, all 4,290 bytes of stdout going to the agent. Right, with Fusion Jev: a compact result showing exitCode 2, the single diagnostic src/example.ts:4:2 error fixture failure, omittedBytes 4290 and a receipt ID; the full log is recoverable with fusion-jev evidence ID --raw.</desc>
+  <desc id="d">Left, without Fusion: a terminal with 200 lines of unchanged context and one real TypeScript error at the bottom, all 4,290 bytes of stdout going to the agent. Right, with Fusion Jev: a compact result showing exitCode 2, the single error line src/example.ts:4:2 - error TS2322: fixture failure shown verbatim, omittedBytes 4290 and a receipt ID; the full log is recoverable with npx -y fusion-jev@0.3.0 evidence ID --raw.</desc>
   <style>
     text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
     .m{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;font-size:14px}
@@ -48,17 +48,17 @@
   <g>
     <rect x="616" y="68" width="560" height="260" rx="12" fill="#161B22" stroke="#F2803A" stroke-width="1.5"/>
     <text class="k" x="640" y="108">exit code</text>
-    <text class="m v" x="790" y="108">exitCode=2 <tspan fill="#8B949E">(preserved)</tspan></text>
+    <text class="m v" x="736" y="108">exitCode=2 <tspan fill="#8B949E">(preserved)</tspan></text>
     <text class="k" x="640" y="148">diagnostic</text>
-    <rect x="782" y="131" width="376" height="24" rx="4" fill="#3D1418"/>
-    <text class="m r" x="790" y="148">src/example.ts:4:2: error: fixture failure</text>
+    <rect x="728" y="131" width="436" height="24" rx="4" fill="#3D1418"/>
+    <text class="m r" x="736" y="148">src/example.ts:4:2 - error TS2322: fixture failure</text>
     <text class="k" x="640" y="188">omitted</text>
-    <text class="m v" x="790" y="188">omittedBytes=4290</text>
+    <text class="m v" x="736" y="188">omittedBytes=4290</text>
     <text class="k" x="640" y="228">receipt</text>
-    <text class="m v" x="790" y="228">stdout=5c4424bf-…</text>
+    <text class="m v" x="736" y="228">stdout=546e7c15-…</text>
     <line x1="640" y1="256" x2="1152" y2="256" stroke="#30363D"/>
     <text class="k" x="640" y="290">recover</text>
-    <text class="m p" x="790" y="290">fusion-jev evidence 5c4424bf-… --raw</text>
+    <text class="m p" x="736" y="290">npx -y fusion-jev@0.3.0 evidence 546e7c15-… --raw</text>
   </g>
   <path d="M896 336v52" stroke="#F2803A" stroke-width="2.5" stroke-dasharray="6 5"/>
   <path d="M886 380l10 12 10-12" stroke="#F2803A" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>

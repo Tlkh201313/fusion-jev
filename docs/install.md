@@ -112,7 +112,7 @@ Expect `"status": "ready"` and, without a key, a warning that the optional provi
 | Jev reported missing | Expected without a key; local tools still work. Set `TYPESAFE_API_KEY` in the private provider file or launch environment. Doctor confirms presence, not validity. |
 | Root rejected | Approve the exact project root via `FUSION_WORKSPACE_ROOT` or `FUSION_WORKSPACE_ALLOWED_ROOTS`. Fusion does not inherit every directory your host can read. |
 | `Evidence missing` / `expired` | Receipts expire after 10 minutes and are capped at 128 receipts / 32 MiB. The CLI and the MCP server must run as the same user so they share the `fusion-jev-mcp` cache directory. |
-| Output looks redacted or clipped | Check `stdoutTruncated` / `stdoutRedacted`. Recovery returns retained bytes only. |
+| Output looks redacted or clipped | Look for `stdoutTruncated=true` / `stdoutRedacted=true` (or the `stderr` equivalents) on the status line; these flags are printed only when they apply. Recovery returns retained bytes only. |
 | Config location reported unsafe | Set `FUSION_CONFIG_HOME` as described above. Fusion never loosens permission checks. |
 
 The package and command are `fusion-jev`, but the configuration and evidence directory name stays `fusion-jev-mcp` for continuity, separate from any other installation of a command named `fusion`. To clear stored receipts, delete the evidence directory: `%LOCALAPPDATA%\fusion-jev-mcp\evidence` on Windows, or `${XDG_CACHE_HOME:-~/.cache}/fusion-jev-mcp/evidence` on Linux and macOS. Configuration lives in `~/.fusion-jev-mcp` on Windows and `${XDG_CONFIG_HOME:-~/.config}/fusion-jev-mcp` elsewhere (`FUSION_CONFIG_HOME` overrides the base).

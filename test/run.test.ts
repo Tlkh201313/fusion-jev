@@ -127,7 +127,8 @@ test('timeout and cancellation stop child process trees', async t => {
 });
 
 test('CLI run bypasses invalid provider settings, emits compact receipts, and expands them after exit', () => {
-  const run = spawnSync(process.execPath, cliArgs('run', '--', process.execPath, '-e', 'process.stdout.write("hello");process.stderr.write("oops")'), { encoding: 'utf8', env: badProvider });
+  // Output above the verbatim limit is persisted; tiny complete output is printed without receipts.
+  const run = spawnSync(process.execPath, cliArgs('run', '--', process.execPath, '-e', 'process.stdout.write("hello".repeat(300));process.stderr.write("oops")'), { encoding: 'utf8', env: badProvider });
   assert.equal(run.status, 0, run.stderr);
   assert.match(run.stdout, /termination=exit/);
   const outId = /stdout=([0-9a-f-]{36})/.exec(run.stdout)?.[1];
@@ -135,7 +136,7 @@ test('CLI run bypasses invalid provider settings, emits compact receipts, and ex
   assert.ok(outId); assert.ok(errId);
   const out = spawnSync(process.execPath, cliArgs('evidence', outId), { encoding: 'utf8', env: badProvider });
   assert.equal(out.status, 0, out.stderr);
-  assert.equal(Buffer.from(JSON.parse(out.stdout).dataBase64, 'base64').toString(), 'hello');
+  assert.equal(Buffer.from(JSON.parse(out.stdout).dataBase64, 'base64').toString(), 'hello'.repeat(300));
   const err = spawnSync(process.execPath, cliArgs('evidence', errId, '--raw'), { env: badProvider });
   assert.equal(err.status, 0, err.stderr.toString()); assert.deepEqual(err.stdout, Buffer.from('oops'));
 });
@@ -144,13 +145,15 @@ test('compact CLI run reports per-channel truncation and known-secret redaction'
   const capped = spawnSync(process.execPath, cliArgs('run', '--max-capture-bytes=1', '--', process.execPath, '-e',
     'process.stdout.write("1234");process.stderr.write("warn")'), { encoding: 'utf8', env: badProvider });
   assert.equal(capped.status, 0, capped.stderr);
-  assert.match(capped.stdout, /stdoutTruncated=true stdoutRedacted=false stdoutStoredBytes=1 stdoutOriginalBytes=4/);
-  assert.match(capped.stdout, /stderrTruncated=true stderrRedacted=false stderrStoredBytes=1 stderrOriginalBytes=4/);
+  assert.match(capped.stdout, /stdoutStoredBytes=1 stdoutOriginalBytes=4 stdoutTruncated=true stderr=/);
+  assert.match(capped.stdout, /stderrStoredBytes=1 stderrOriginalBytes=4 stderrTruncated=true\n/);
+  assert.doesNotMatch(capped.stdout, /Redacted/);
   const redacted = spawnSync(process.execPath, cliArgs('run', '--', process.execPath, '-e',
     'process.stdout.write("TYPESAFE_API_KEY=topsecret\\n");process.stderr.write("ok")'), { encoding: 'utf8', env: badProvider });
   assert.equal(redacted.status, 0, redacted.stderr);
-  assert.match(redacted.stdout, /stdoutTruncated=false stdoutRedacted=true stdoutStoredBytes=\d+ stdoutOriginalBytes=\d+/);
-  assert.match(redacted.stdout, /stderrTruncated=false stderrRedacted=false stderrStoredBytes=2 stderrOriginalBytes=2/);
+  assert.match(redacted.stdout, /stdoutStoredBytes=\d+ stdoutOriginalBytes=\d+ stdoutRedacted=true stderr=/);
+  assert.match(redacted.stdout, /stderrStoredBytes=2\n/);
+  assert.doesNotMatch(redacted.stdout, /Truncated/);
   assert.doesNotMatch(redacted.stdout, /topsecret/);
 });
 

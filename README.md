@@ -30,21 +30,26 @@ A deliberately failing command with 200 lines of noise and one real error:
 npx -y fusion-jev run '--' node -e "for (let i=0;i<200;i++) console.log('unchanged context '+i); console.error('src/example.ts:4:2 - error TS2322: fixture failure'); process.exitCode=2"
 ```
 
-The host sees a compact result. This is real output from the CLI (stdout lines first, then the stderr lines), trimmed only in that receipt UUIDs are shortened to their first 8 characters (`…`) and the two `recover*Argv` lines, which carry machine paths, are omitted:
+The host sees a compact result. This is real output from the CLI (stdout lines first, then the stderr line), trimmed only in that receipt UUIDs are shortened to their first 8 characters (`…`):
 
 ```text
-termination=exit exitCode=2 stdout=5c4424bf-… stdoutTruncated=false stdoutRedacted=false stdoutStoredBytes=4290 stdoutOriginalBytes=4290 stderr=acdb14bf-… stderrTruncated=false stderrRedacted=false stderrStoredBytes=51 stderrOriginalBytes=51 durationMs=190 cleanupFailed=false
-omittedBytes=4290 diagnosticsOmitted=0 excerptsClipped=0 unparsedBytes=0
-src/example.ts:4:2: error: fixture failure [acdb14bf-…:0-50]
-omittedBytes=51 diagnosticsOmitted=0 excerptsClipped=0 unparsedBytes=0
-recoverStdout=npx -y fusion-jev evidence 5c4424bf-… --raw
-recoverStderr=npx -y fusion-jev evidence acdb14bf-… --raw
+termination=exit exitCode=2 durationMs=403 stdout=546e7c15-… stdoutStoredBytes=4290 stderr=1c86ca87-… stderrStoredBytes=51
+omittedBytes=4290
+recoverStdout=npx -y fusion-jev@0.3.0 evidence 546e7c15-… --raw
+src/example.ts:4:2 - error TS2322: fixture failure
 ```
 
-In the real output each receipt ID is a full 36-character UUID; paste the full ID when recovering. The process exit code (2) is preserved. All 4,290 bytes of stdout stay available:
+The process exit code (2) is preserved. The 51-byte stderr is small and complete, so it is printed verbatim and needs no recovery line; only the 4,290 bytes of stdout were left out, and they stay available behind the receipt. Flags such as `stdoutTruncated=true` appear only when they apply. When launched through `npx`, the recovery line names the pinned `npx -y fusion-jev@<version>` form; after a global install it reads `fusion-jev evidence …`. In the real output each receipt ID is a full 36-character UUID; paste the full ID when recovering:
 
 ```sh
-npx -y fusion-jev evidence 5c4424bf-… --raw   # prints the original 200 lines
+npx -y fusion-jev@0.3.0 evidence 546e7c15-… --raw   # prints the original 200 lines
+```
+
+Output that is small to begin with (1 KiB or less across both streams, complete and valid UTF-8) is passed through unchanged with one status line, and no receipt is written:
+
+```text
+v24.12.0
+exitCode=0 durationMs=54
 ```
 
 ## Install in 30 seconds
@@ -157,8 +162,8 @@ More questions and troubleshooting: [docs/faq.md](docs/faq.md).
 ## Limits
 
 - Receipts expire after 10 minutes. The store keeps at most 128 receipts and 32 MiB, so older ones can be evicted sooner.
-- Each output stream is captured up to 8 MiB. Check `stdoutTruncated` and `stdoutRedacted`: recovery returns the retained bytes, not omitted or redacted content. Redaction matches known secret patterns and is not a guarantee that output holds no secrets.
-- Tiny outputs can come back slightly larger than the original because of receipt overhead.
+- Each output stream is captured up to 8 MiB. Watch for `stdoutTruncated=true` or `stdoutRedacted=true` (these flags are printed only when they apply): recovery returns the retained bytes, not omitted or redacted content. Redaction matches known secret patterns and is not a guarantee that output holds no secrets.
+- Tiny outputs (1 KiB or less in total) are passed through verbatim plus one status line, so they cost a few bytes more than the raw output and create no receipt.
 - The evidence store uses `better-sqlite3`, a native module. Installation needs a prebuilt binary for your Node/platform or a local build toolchain (see [docs/install.md](docs/install.md)).
 - Token or speed savings have not been measured on real hosts yet. The method and an empty results table are in [benchmark/real-host.md](https://github.com/Tlkh201313/fusion-jev/blob/main/benchmark/real-host.md); no savings figure is claimed.
 - Jev's confidence and probability values are uncalibrated gates, and a configured key is not proof it works.

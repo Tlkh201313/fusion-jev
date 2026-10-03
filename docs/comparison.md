@@ -24,7 +24,7 @@ RTK's README documents sqlite recall, failure-output recovery, Windows setup, Co
 - You use Claude Code or Codex and want one small MCP server that works without an account.
 - You want explicit limits (capture size, expiry, redaction) reported rather than silent clipping.
 
-It fits less well if native tools or RTK already cover your workflow, or if you mostly produce tiny outputs, where receipt overhead can outweigh any compaction.
+It fits less well if native tools or RTK already cover your workflow, or if you mostly produce tiny outputs: those (1 KiB or less) pass through verbatim with one status line, so there is nothing to compact.
 
 ## Measuring for yourself
 

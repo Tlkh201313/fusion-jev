@@ -38,3 +38,5 @@ Always record the host, host version, OS and date. Keep small-output and slow-st
 | Failing build | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
 
 Notes (versions, project, runs, flags seen, host-reported token usage): TBD
+
+A host-less, output-only measurement on real commands (bytes, time, exit codes, receipt recovery; not host token usage) is in [results/2026-10-02-raw-vs-fusion.md](results/2026-10-02-raw-vs-fusion.md). It does not fill this table.

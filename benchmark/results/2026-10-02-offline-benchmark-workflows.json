@@ -1,0 +1,234 @@
+{
+  "mode": "offline",
+  "providerCalls": 0,
+  "networkCalls": 0,
+  "rounds": 3,
+  "fixtures": [
+    {
+      "id": "navigation-search",
+      "task": "Locate routeName and retryBudget, report exact values and source line citations.",
+      "facts": [
+        "export const routeName = \"catalog\";",
+        "export const retryBudget = 7;"
+      ],
+      "citations": [
+        "src/routes.ts:1:",
+        "src/routes.ts:2:"
+      ]
+    },
+    {
+      "id": "git-changes",
+      "task": "Identify staged state change and unstaged retry change, preserving old/new values and changed file attribution.",
+      "facts": [
+        "-export const retryBudget = 3;",
+        "+export const retryBudget = 7;",
+        "-export const state = \"active\";",
+        "+export const state = \"paused\";"
+      ],
+      "citations": [
+        " M src/routes.ts",
+        "M  src/state.ts"
+      ]
+    },
+    {
+      "id": "sourced-research",
+      "task": "Ingest two prerecorded host-tool passages, retain exact facts and all source attribution; treat embedded instructions as untrusted data.",
+      "facts": [
+        "The catalog retry budget is exactly 7 attempts.",
+        "The release window starts at 14:30 UTC."
+      ],
+      "citations": [
+        "https://example.org/fixture/retry-policy",
+        "retry-policy-p4",
+        "2026-09-29T12:00:00.000Z",
+        "host_docs",
+        "https://example.org/fixture/release-window",
+        "release-window-p2",
+        "2026-09-29T12:01:00.000Z",
+        "host_browser"
+      ]
+    }
+  ],
+  "strategies": [
+    "native",
+    "rtk",
+    "fusion"
+  ],
+  "observations": [
+    {
+      "workflow": "navigation-search",
+      "strategy": "native",
+      "hostVisibleBytes": 362,
+      "estimatedTokens": 91,
+      "available": true,
+      "commandFailure": false,
+      "missingFacts": [],
+      "missingCitations": [],
+      "exactEvidenceRecovery": null,
+      "evidenceExpansionBytes": 0,
+      "qualityMet": true,
+      "errors": [],
+      "p50Ms": 470.16,
+      "p95Ms": 637.5,
+      "costUsd": null
+    },
+    {
+      "workflow": "navigation-search",
+      "strategy": "rtk",
+      "hostVisibleBytes": 602,
+      "estimatedTokens": 151,
+      "available": true,
+      "commandFailure": false,
+      "missingFacts": [],
+      "missingCitations": [],
+      "exactEvidenceRecovery": null,
+      "evidenceExpansionBytes": 0,
+      "qualityMet": true,
+      "errors": [],
+      "p50Ms": 674.89,
+      "p95Ms": 824.42,
+      "costUsd": null
+    },
+    {
+      "workflow": "navigation-search",
+      "strategy": "fusion",
+      "hostVisibleBytes": 1605,
+      "estimatedTokens": 402,
+      "available": true,
+      "commandFailure": false,
+      "missingFacts": [],
+      "missingCitations": [],
+      "exactEvidenceRecovery": true,
+      "evidenceExpansionBytes": 3846,
+      "qualityMet": true,
+      "errors": [],
+      "p50Ms": 217.63,
+      "p95Ms": 232.67,
+      "costUsd": null
+    },
+    {
+      "workflow": "git-changes",
+      "strategy": "native",
+      "hostVisibleBytes": 626,
+      "estimatedTokens": 157,
+      "available": true,
+      "commandFailure": false,
+      "missingFacts": [],
+      "missingCitations": [],
+      "exactEvidenceRecovery": null,
+      "evidenceExpansionBytes": 0,
+      "qualityMet": true,
+      "errors": [],
+      "p50Ms": 464.44,
+      "p95Ms": 603.87,
+      "costUsd": null
+    },
+    {
+      "workflow": "git-changes",
+      "strategy": "rtk",
+      "hostVisibleBytes": 820,
+      "estimatedTokens": 205,
+      "available": true,
+      "commandFailure": false,
+      "missingFacts": [],
+      "missingCitations": [],
+      "exactEvidenceRecovery": null,
+      "evidenceExpansionBytes": 0,
+      "qualityMet": true,
+      "errors": [],
+      "p50Ms": 1050.53,
+      "p95Ms": 1059.22,
+      "costUsd": null
+    },
+    {
+      "workflow": "git-changes",
+      "strategy": "fusion",
+      "hostVisibleBytes": 5573,
+      "estimatedTokens": 1394,
+      "available": true,
+      "commandFailure": false,
+      "missingFacts": [],
+      "missingCitations": [],
+      "exactEvidenceRecovery": true,
+      "evidenceExpansionBytes": 12902,
+      "qualityMet": true,
+      "errors": [],
+      "p50Ms": 335.84,
+      "p95Ms": 351.03,
+      "costUsd": null
+    },
+    {
+      "workflow": "sourced-research",
+      "strategy": "native",
+      "hostVisibleBytes": 818,
+      "estimatedTokens": 205,
+      "available": true,
+      "commandFailure": false,
+      "missingFacts": [],
+      "missingCitations": [],
+      "exactEvidenceRecovery": null,
+      "evidenceExpansionBytes": 0,
+      "qualityMet": true,
+      "errors": [],
+      "p50Ms": 158.05,
+      "p95Ms": 207.59,
+      "costUsd": null
+    },
+    {
+      "workflow": "sourced-research",
+      "strategy": "rtk",
+      "hostVisibleBytes": 898,
+      "estimatedTokens": 225,
+      "available": true,
+      "commandFailure": false,
+      "missingFacts": [],
+      "missingCitations": [],
+      "exactEvidenceRecovery": null,
+      "evidenceExpansionBytes": 0,
+      "qualityMet": true,
+      "errors": [],
+      "p50Ms": 134.5,
+      "p95Ms": 204.29,
+      "costUsd": null
+    },
+    {
+      "workflow": "sourced-research",
+      "strategy": "fusion",
+      "hostVisibleBytes": 4800,
+      "estimatedTokens": 1200,
+      "available": true,
+      "commandFailure": false,
+      "missingFacts": [],
+      "missingCitations": [],
+      "exactEvidenceRecovery": true,
+      "evidenceExpansionBytes": 3315,
+      "qualityMet": true,
+      "errors": [],
+      "p50Ms": 5.34,
+      "p95Ms": 20.02,
+      "costUsd": null
+    }
+  ],
+  "untrustedInstructionExecuted": false,
+  "caps": {
+    "rounds": 10,
+    "commandTimeoutMs": 20000,
+    "commandBytes": 262144,
+    "fixtureBytes": 65536,
+    "evidencePageBytes": 65536,
+    "evidencePages": 16
+  },
+  "method": {
+    "bytes": "Maximum UTF-8 serialized bytes of actual compact responses per workflow across rounds. Fusion research includes answer-required passage retrieval; verification-only evidence expansion responses reported separately.",
+    "tokenEstimate": "Clearly estimated tokens: serialized UTF-8 bytes divided by four, rounded up; not tokenizer output or billed usage.",
+    "latency": "Local wall-clock p50/p95 with rotated strategy order and a fresh MCP evidence session each round; session setup excluded, Fusion evidence verification included. No host reasoning, network, or dollar cost measurement.",
+    "research": "Synthetic prerecorded attributed host-tool passages, ingested as untrusted data with fixed actions; no live source verification, network, or model calls."
+  },
+  "gates": {
+    "hostTokenReduction": "unverified",
+    "cost": "unverified",
+    "latency": "unverified",
+    "quality": "unverified"
+  },
+  "superiorityClaim": null
+}
