@@ -37,6 +37,7 @@
     "plugin",
     "docs",
     "README.md",
+    "AGENT_SETUP_PROMPT.md",
     "CHANGELOG.md",
     "CONTRIBUTING.md",
     "SECURITY.md",

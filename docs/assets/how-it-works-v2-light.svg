@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="760" viewBox="0 0 1200 760" role="img" aria-labelledby="title desc">
+<title id="title">How Fusion Jev works</title><desc id="desc">The coding host chooses and authorizes work. Fusion runs read-only MCP inspections or host-authorized CLI commands locally. It returns compact results and receipt IDs when evidence is stored. The same host session reasons, checks correctness, edits and authorizes next steps. Retained evidence is local and may be expanded on demand through fusion_evidence or the evidence CLI. Receipts expire in ten minutes and may be evicted earlier; command capture is capped at eight MiB per stream, and redacted or clipped content cannot be recovered. Optional Jev selection uses the TypeSafe API only when enabled to choose a candidate ID or escalate, never to grant command permission.</desc>
+<style>text{font-family:Arial,Helvetica,sans-serif}.mono{font-family:Consolas,"Liberation Mono",monospace}</style>
+<rect x="0.5" y="0.5" width="1199" height="759" rx="20" fill="#FFFFFF" stroke="#B8C2CF"/>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0L10 5L0 10Z" fill="#AF4A15"/></marker></defs>
+<text x="40" y="54" font-size="32" fill="#18222F" font-weight="700" text-anchor="start" class="">Local evidence. Host-owned decisions.</text>
+<text x="40" y="89" font-size="19" fill="#475569" font-weight="400" text-anchor="start" class="">The core workflow needs no API key. CLI and MCP are separate entry points.</text>
+<rect x="40" y="152" width="228" height="228" rx="13" fill="#F6F8FA" stroke="#AF4A15" stroke-width="2"/>
+<text x="61" y="190" font-size="23" fill="#18222F" font-weight="700" text-anchor="start" class="">1  Host request</text>
+<text x="61" y="226" font-size="19" fill="#475569" font-weight="400" text-anchor="start" class="">Claude Code / Codex</text>
+<text x="61" y="257" font-size="19" fill="#475569" font-weight="400" text-anchor="start" class="">Chooses the task</text>
+<text x="61" y="288" font-size="19" fill="#475569" font-weight="400" text-anchor="start" class="">Authorizes commands</text>
+<text x="61" y="350" font-size="17" fill="#AF4A15" font-weight="600" text-anchor="start" class="">Host permissions apply</text>
+<rect x="313" y="152" width="307" height="228" rx="13" fill="#F6F8FA" stroke="#B8C2CF" stroke-width="1.4"/>
+<text x="335" y="190" font-size="23" fill="#18222F" font-weight="700" text-anchor="start" class="">2  Local Fusion tools</text>
+<text x="335" y="226" font-size="18" fill="#18222F" font-weight="600" text-anchor="start" class="">MCP: inspect / assist</text>
+<text x="335" y="254" font-size="17" fill="#475569" font-weight="400" text-anchor="start" class="">Bounded read-only inspections</text>
+<line x1="335" y1="276" x2="598" y2="276" stroke="#B8C2CF"/>
+<text x="335" y="307" font-size="18" fill="#18222F" font-weight="600" text-anchor="start" class="">CLI: run -- program args</text>
+<text x="335" y="335" font-size="17" fill="#475569" font-weight="400" text-anchor="start" class="">Captures stdout + stderr</text>
+<text x="335" y="360" font-size="17" fill="#475569" font-weight="400" text-anchor="start" class="">Preserves command exit status</text>
+<rect x="665" y="152" width="208" height="228" rx="13" fill="#F6F8FA" stroke="#B8C2CF" stroke-width="1.4"/>
+<text x="687" y="190" font-size="21" fill="#18222F" font-weight="700" text-anchor="start" class="">3  Compact result</text>
+<text x="687" y="228" font-size="17" fill="#475569" font-weight="400" text-anchor="start" class="">Diagnostic or summary</text>
+<text x="687" y="260" font-size="17" fill="#475569" font-weight="400" text-anchor="start" class="">Status and omissions</text>
+<text x="687" y="292" font-size="17" fill="#475569" font-weight="400" text-anchor="start" class="">Receipt ID, if stored</text>
+<text x="687" y="350" font-size="16" fill="#AF4A15" font-weight="600" text-anchor="start" class="">Inspect more if needed</text>
+<rect x="918" y="152" width="242" height="228" rx="13" fill="#F6F8FA" stroke="#AF4A15" stroke-width="2"/>
+<text x="940" y="190" font-size="21" fill="#18222F" font-weight="700" text-anchor="start" class="">4  Same host session</text>
+<text x="940" y="228" font-size="18" fill="#475569" font-weight="400" text-anchor="start" class="">Reasons and verifies</text>
+<text x="940" y="260" font-size="18" fill="#475569" font-weight="400" text-anchor="start" class="">Edits and next steps</text>
+<text x="940" y="292" font-size="18" fill="#475569" font-weight="400" text-anchor="start" class="">Keeps authorization</text>
+<text x="940" y="350" font-size="16" fill="#AF4A15" font-weight="600" text-anchor="start" class="">Uncertainty returns here</text>
+<path d="M268 260H308" stroke="#AF4A15" stroke-width="2.5" fill="none" marker-end="url(#arrow)"/>
+<path d="M620 260H660" stroke="#AF4A15" stroke-width="2.5" fill="none" marker-end="url(#arrow)"/>
+<path d="M873 260H913" stroke="#AF4A15" stroke-width="2.5" fill="none" marker-end="url(#arrow)"/>
+<rect x="665" y="457" width="331" height="148" rx="13" fill="#F6F8FA" stroke="#AF4A15" stroke-width="2"/>
+<text x="686" y="494" font-size="23" fill="#18222F" font-weight="700" text-anchor="start" class="">Retained evidence</text>
+<text x="686" y="527" font-size="16" fill="#475569" font-weight="400" text-anchor="start" class="">Local receipts; bounded capture</text>
+<text x="686" y="552" font-size="16" fill="#475569" font-weight="400" text-anchor="start" class="">Known-pattern redaction before storage</text>
+<text x="686" y="577" font-size="16" fill="#475569" font-weight="400" text-anchor="start" class="">10-minute expiry; earlier eviction possible</text>
+<path d="M590 380V412H756V451" stroke="#AF4A15" stroke-width="2.2" fill="none" marker-end="url(#arrow)"/>
+<text x="632" y="403" font-size="16" fill="#475569" font-weight="400" text-anchor="start" class="">retain, cap, redact</text>
+<path d="M1018 380V413H977V451" stroke="#AF4A15" stroke-width="2.2" fill="none" marker-end="url(#arrow)"/>
+<text x="1016" y="436" font-size="15" fill="#475569" font-weight="400" text-anchor="start" class="">request detail</text>
+<path d="M996 540H1122V387" stroke="#AF4A15" stroke-width="2.2" fill="none" marker-end="url(#arrow)"/>
+<text x="1016" y="563" font-size="16" fill="#475569" font-weight="400" text-anchor="start" class="">retained bytes</text>
+<text x="1016" y="587" font-size="16" fill="#475569" font-weight="400" text-anchor="start" class="">to the host</text>
+<rect x="313" y="473" width="307" height="132" rx="13" fill="#F6F8FA" stroke="#B8C2CF" stroke-width="1.4" stroke-dasharray="7 5"/>
+<text x="335" y="507" font-size="21" fill="#18222F" font-weight="700" text-anchor="start" class="">Optional official Jev</text>
+<text x="335" y="537" font-size="16" fill="#475569" font-weight="400" text-anchor="start" class="">TypeSafe API, only if enabled</text>
+<text x="335" y="561" font-size="16" fill="#475569" font-weight="400" text-anchor="start" class="">Selects a candidate ID or escalates</text>
+<text x="335" y="585" font-size="16" fill="#475569" font-weight="400" text-anchor="start" class="">Never grants command permission</text>
+<path d="M355 386V468" stroke="#AF4A15" stroke-width="2" stroke-dasharray="6 5" fill="none" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+<text x="374" y="411" font-size="15" fill="#475569" font-weight="400" text-anchor="start" class="">eligible MCP</text>
+<text x="374" y="432" font-size="15" fill="#475569" font-weight="400" text-anchor="start" class="">requests only</text>
+<text x="40" y="652" font-size="18" fill="#18222F" font-weight="700" text-anchor="start" class="">Expand on demand</text>
+<text x="223" y="652" font-size="18" fill="#475569" font-weight="400" text-anchor="start" class="mono">fusion_evidence  ·  fusion-jev evidence &lt;id&gt; --raw</text>
+<text x="40" y="689" font-size="17" fill="#475569" font-weight="400" text-anchor="start" class="">Command capture: up to 8 MiB per stream. The store holds at most 128 receipts / 32 MiB.</text>
+<text x="40" y="717" font-size="17" fill="#475569" font-weight="400" text-anchor="start" class="">Recovery cannot restore clipped, redacted or never-captured content. Read omission and integrity flags.</text>
+</svg>

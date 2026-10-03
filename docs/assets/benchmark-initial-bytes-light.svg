@@ -1,0 +1,111 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1320" viewBox="0 0 1200 1320" role="img" aria-labelledby="title desc">
+<title id="title">Historical initial-output bytes: native vs Fusion</title><desc id="desc">Historical initial-output bytes only, not total interaction bytes, expanded bytes or tokens. Measurements: 3 October 2026, local build fc942197, Windows 11 and Node 24.12.0. All eleven cases are included using native and Fusion first-run stdout plus stderr bytes. Five small-output cases increase. Six receipt responses are smaller initially but may omit required content; expansions add bytes and time. Each panel has a different explicit linear scale. Typecheck passes: native 60, Fusion 87 bytes; TypeScript: 3 errors: native 287, Fusion 313 bytes; Setup tests: 7 pass: native 700, Fusion 728 bytes; Node version: native 10, Fusion 36 bytes; Empty Git status: native 0, Fusion 26 bytes; TypeScript: 60 errors: native 4,995, Fusion 711 bytes; Node tests: 1 / 61 fails: native 2,611, Fusion 459 bytes; Git log: 50 commits: native 8,996, Fusion 205 bytes; Git diff: summary: native 2,190, Fusion 205 bytes; 200-line noise fixture: native 4,341, Fusion 321 bytes; Git log: 20 patches: native 1,277,810, Fusion 259 bytes. The patch retained 1,277,798 redacted bytes. These observations do not establish current-code, npm-package, host-token, cost, speed or task-quality gains.</desc>
+<style>text{font-family:Arial,Helvetica,sans-serif}.mono{font-family:Consolas,"Liberation Mono",monospace}</style>
+<rect x="0.5" y="0.5" width="1199" height="1319" rx="20" fill="#FFFFFF" stroke="#B8C2CF"/>
+<text x="40" y="52" font-size="34" fill="#18222F" font-weight="700" text-anchor="start" class="">Historical initial-output bytes</text>
+<text x="40" y="89" font-size="21" fill="#475569" font-weight="400" text-anchor="start" class="">Native command vs Fusion wrapper, before any receipt expansion</text>
+<text x="40" y="120" font-size="18" fill="#475569" font-weight="400" text-anchor="start" class="">3 Oct 2026  ·  fc942197 local build  ·  Windows 11  ·  Node 24.12.0</text>
+<rect x="42" y="151" width="20" height="12" fill="#506780"/>
+<text x="72" y="163" font-size="17" fill="#475569" font-weight="400" text-anchor="start" class="">Native stdout + stderr</text>
+<rect x="316" y="151" width="20" height="12" fill="#AF4A15"/>
+<text x="346" y="163" font-size="17" fill="#475569" font-weight="400" text-anchor="start" class="">Fusion initial stdout + stderr</text>
+<text x="1158" y="163" font-size="16" fill="#475569" font-weight="400" text-anchor="end" class="">All 11 cases; first-run sizes</text>
+<rect x="26" y="191" width="1148" height="433" rx="13" fill="#F6F8FA" stroke="#B8C2CF" stroke-width="1.4"/>
+<text x="46" y="224" font-size="22" fill="#18222F" font-weight="700" text-anchor="start" class="">Small outputs: all five became larger</text>
+<text x="903" y="255" font-size="17" fill="#475569" font-weight="600" text-anchor="start" class="">Native → Fusion</text>
+<text x="1153" y="255" font-size="17" fill="#475569" font-weight="600" text-anchor="end" class="">Δ bytes</text>
+<line x1="406.00" y1="269" x2="406.00" y2="575" stroke="#B8C2CF" stroke-width="0.8"/>
+<line x1="518.75" y1="269" x2="518.75" y2="575" stroke="#B8C2CF" stroke-width="0.8"/>
+<line x1="631.50" y1="269" x2="631.50" y2="575" stroke="#B8C2CF" stroke-width="0.8"/>
+<line x1="744.25" y1="269" x2="744.25" y2="575" stroke="#B8C2CF" stroke-width="0.8"/>
+<line x1="857.00" y1="269" x2="857.00" y2="575" stroke="#B8C2CF" stroke-width="0.8"/>
+<text x="46" y="285" font-size="19" fill="#18222F" font-weight="600" text-anchor="start" class="">Typecheck passes</text>
+<text x="46" y="309" font-size="14" fill="#475569" font-weight="400" text-anchor="start" class="">verbatim + status</text>
+<rect x="406" y="277" width="33.825" height="12" rx="2" fill="#506780"/>
+<rect x="406" y="296" width="49.046" height="12" rx="2" fill="#AF4A15"/>
+<text x="903" y="295" font-size="18" fill="#18222F" font-weight="400" text-anchor="start" class="mono">60 → 87</text>
+<text x="1153" y="295" font-size="18" fill="#18222F" font-weight="400" text-anchor="end" class="mono">+27</text>
+<text x="46" y="347" font-size="19" fill="#18222F" font-weight="600" text-anchor="start" class="">TypeScript: 3 errors</text>
+<text x="46" y="371" font-size="14" fill="#475569" font-weight="400" text-anchor="start" class="">verbatim + status</text>
+<rect x="406" y="339" width="161.796" height="12" rx="2" fill="#506780"/>
+<rect x="406" y="358" width="176.454" height="12" rx="2" fill="#AF4A15"/>
+<text x="903" y="357" font-size="18" fill="#18222F" font-weight="400" text-anchor="start" class="mono">287 → 313</text>
+<text x="1153" y="357" font-size="18" fill="#18222F" font-weight="400" text-anchor="end" class="mono">+26</text>
+<text x="46" y="409" font-size="19" fill="#18222F" font-weight="600" text-anchor="start" class="">Setup tests: 7 pass</text>
+<text x="46" y="433" font-size="14" fill="#475569" font-weight="400" text-anchor="start" class="">verbatim + status; timing text varies</text>
+<rect x="406" y="401" width="394.625" height="12" rx="2" fill="#506780"/>
+<rect x="406" y="420" width="410.410" height="12" rx="2" fill="#AF4A15"/>
+<text x="903" y="419" font-size="18" fill="#18222F" font-weight="400" text-anchor="start" class="mono">700 → 728</text>
+<text x="1153" y="419" font-size="18" fill="#18222F" font-weight="400" text-anchor="end" class="mono">+28</text>
+<text x="46" y="471" font-size="19" fill="#18222F" font-weight="600" text-anchor="start" class="">Node version</text>
+<text x="46" y="495" font-size="14" fill="#475569" font-weight="400" text-anchor="start" class="">verbatim + status</text>
+<rect x="406" y="463" width="5.638" height="12" rx="2" fill="#506780"/>
+<rect x="406" y="482" width="20.295" height="12" rx="2" fill="#AF4A15"/>
+<text x="903" y="481" font-size="18" fill="#18222F" font-weight="400" text-anchor="start" class="mono">10 → 36</text>
+<text x="1153" y="481" font-size="18" fill="#18222F" font-weight="400" text-anchor="end" class="mono">+26</text>
+<text x="46" y="533" font-size="19" fill="#18222F" font-weight="600" text-anchor="start" class="">Empty Git status</text>
+<text x="46" y="557" font-size="14" fill="#475569" font-weight="400" text-anchor="start" class="">status-only response</text>
+<circle cx="406" cy="531" r="3.5" fill="#506780"/>
+<rect x="406" y="544" width="14.658" height="12" rx="2" fill="#AF4A15"/>
+<text x="903" y="543" font-size="18" fill="#18222F" font-weight="400" text-anchor="start" class="mono">0 → 26</text>
+<text x="1153" y="543" font-size="18" fill="#18222F" font-weight="400" text-anchor="end" class="mono">+26</text>
+<text x="406.0" y="595" font-size="14" fill="#475569" font-weight="400" text-anchor="middle" class="">0</text>
+<text x="518.75" y="595" font-size="14" fill="#475569" font-weight="400" text-anchor="middle" class="">200</text>
+<text x="631.5" y="595" font-size="14" fill="#475569" font-weight="400" text-anchor="middle" class="">400</text>
+<text x="744.25" y="595" font-size="14" fill="#475569" font-weight="400" text-anchor="middle" class="">600</text>
+<text x="857.0" y="595" font-size="14" fill="#475569" font-weight="400" text-anchor="middle" class="">800</text>
+<text x="632" y="619" font-size="14" fill="#475569" font-weight="400" text-anchor="middle" class="">Bytes · linear scale for this panel</text>
+<rect x="26" y="644" width="1148" height="433" rx="13" fill="#F6F8FA" stroke="#B8C2CF" stroke-width="1.4"/>
+<text x="46" y="677" font-size="22" fill="#18222F" font-weight="700" text-anchor="start" class="">Receipts: smaller first response, some detail omitted</text>
+<text x="903" y="708" font-size="17" fill="#475569" font-weight="600" text-anchor="start" class="">Native → Fusion</text>
+<text x="1153" y="708" font-size="17" fill="#475569" font-weight="600" text-anchor="end" class="">Δ bytes</text>
+<line x1="406.00" y1="722" x2="406.00" y2="1028" stroke="#B8C2CF" stroke-width="0.8"/>
+<line x1="518.75" y1="722" x2="518.75" y2="1028" stroke="#B8C2CF" stroke-width="0.8"/>
+<line x1="631.50" y1="722" x2="631.50" y2="1028" stroke="#B8C2CF" stroke-width="0.8"/>
+<line x1="744.25" y1="722" x2="744.25" y2="1028" stroke="#B8C2CF" stroke-width="0.8"/>
+<line x1="857.00" y1="722" x2="857.00" y2="1028" stroke="#B8C2CF" stroke-width="0.8"/>
+<text x="46" y="738" font-size="19" fill="#18222F" font-weight="600" text-anchor="start" class="">TypeScript: 60 errors</text>
+<text x="46" y="762" font-size="14" fill="#475569" font-weight="400" text-anchor="start" class="">4 / 60 diagnostics shown</text>
+<rect x="406" y="730" width="225.274" height="12" rx="2" fill="#506780"/>
+<rect x="406" y="749" width="32.066" height="12" rx="2" fill="#AF4A15"/>
+<text x="903" y="748" font-size="18" fill="#18222F" font-weight="400" text-anchor="start" class="mono">4,995 → 711</text>
+<text x="1153" y="748" font-size="18" fill="#18222F" font-weight="400" text-anchor="end" class="mono">-4,284</text>
+<text x="46" y="800" font-size="19" fill="#18222F" font-weight="600" text-anchor="start" class="">Node tests: 1 / 61 fails</text>
+<text x="46" y="824" font-size="14" fill="#475569" font-weight="400" text-anchor="start" class="">failure shown; other output omitted</text>
+<rect x="406" y="792" width="117.756" height="12" rx="2" fill="#506780"/>
+<rect x="406" y="811" width="20.701" height="12" rx="2" fill="#AF4A15"/>
+<text x="903" y="810" font-size="18" fill="#18222F" font-weight="400" text-anchor="start" class="mono">2,611 → 459</text>
+<text x="1153" y="810" font-size="18" fill="#18222F" font-weight="400" text-anchor="end" class="mono">-2,152</text>
+<text x="46" y="862" font-size="19" fill="#18222F" font-weight="600" text-anchor="start" class="">Git log: 50 commits</text>
+<text x="46" y="886" font-size="14" fill="#475569" font-weight="400" text-anchor="start" class="">receipt only; content not shown</text>
+<rect x="406" y="854" width="405.720" height="12" rx="2" fill="#506780"/>
+<rect x="406" y="873" width="9.245" height="12" rx="2" fill="#AF4A15"/>
+<text x="903" y="872" font-size="18" fill="#18222F" font-weight="400" text-anchor="start" class="mono">8,996 → 205</text>
+<text x="1153" y="872" font-size="18" fill="#18222F" font-weight="400" text-anchor="end" class="mono">-8,791</text>
+<text x="46" y="924" font-size="19" fill="#18222F" font-weight="600" text-anchor="start" class="">Git diff: summary</text>
+<text x="46" y="948" font-size="14" fill="#475569" font-weight="400" text-anchor="start" class="">receipt only; content not shown</text>
+<rect x="406" y="916" width="98.769" height="12" rx="2" fill="#506780"/>
+<rect x="406" y="935" width="9.245" height="12" rx="2" fill="#AF4A15"/>
+<text x="903" y="934" font-size="18" fill="#18222F" font-weight="400" text-anchor="start" class="mono">2,190 → 205</text>
+<text x="1153" y="934" font-size="18" fill="#18222F" font-weight="400" text-anchor="end" class="mono">-1,985</text>
+<text x="46" y="986" font-size="19" fill="#18222F" font-weight="600" text-anchor="start" class="">200-line noise fixture</text>
+<text x="46" y="1010" font-size="14" fill="#475569" font-weight="400" text-anchor="start" class="">failure shown; noise omitted</text>
+<rect x="406" y="978" width="195.779" height="12" rx="2" fill="#506780"/>
+<rect x="406" y="997" width="14.477" height="12" rx="2" fill="#AF4A15"/>
+<text x="903" y="996" font-size="18" fill="#18222F" font-weight="400" text-anchor="start" class="mono">4,341 → 321</text>
+<text x="1153" y="996" font-size="18" fill="#18222F" font-weight="400" text-anchor="end" class="mono">-4,020</text>
+<text x="406.0" y="1048" font-size="14" fill="#475569" font-weight="400" text-anchor="middle" class="">0</text>
+<text x="518.75" y="1048" font-size="14" fill="#475569" font-weight="400" text-anchor="middle" class="">2,500</text>
+<text x="631.5" y="1048" font-size="14" fill="#475569" font-weight="400" text-anchor="middle" class="">5,000</text>
+<text x="744.25" y="1048" font-size="14" fill="#475569" font-weight="400" text-anchor="middle" class="">7,500</text>
+<text x="857.0" y="1048" font-size="14" fill="#475569" font-weight="400" text-anchor="middle" class="">10,000</text>
+<text x="632" y="1072" font-size="14" fill="#475569" font-weight="400" text-anchor="middle" class="">Bytes · linear scale for this panel</text>
+<rect x="26" y="1097" width="1148" height="93" rx="13" fill="#F6F8FA" stroke="#B8C2CF" stroke-width="1.4"/>
+<text x="46" y="1128" font-size="21" fill="#18222F" font-weight="700" text-anchor="start" class="">Large Git patch: receipt is not the patch content</text>
+<text x="46" y="1157" font-size="19" fill="#18222F" font-weight="400" text-anchor="start" class="">Native 1,277,810 bytes → initial Fusion 259 bytes</text>
+<text x="1152" y="1157" font-size="17" fill="#475569" font-weight="400" text-anchor="end" class="">1,277,798 redacted bytes retained</text>
+<text x="40" y="1223" font-size="16" fill="#475569" font-weight="400" text-anchor="start" class="">Expansion adds bytes and time. Git informational cases require it to read the omitted content.</text>
+<text x="40" y="1247" font-size="16" fill="#475569" font-weight="400" text-anchor="start" class="">Sizes are first-run stdout + stderr, not full-session usage; test duration text differs across executions.</text>
+<text x="40" y="1271" font-size="16" fill="#475569" font-weight="400" text-anchor="start" class="">Bytes do not prove token, cost, speed or task-quality savings. No newer-code or released-package gain is claimed.</text>
+<text x="40" y="1295" font-size="16" fill="#475569" font-weight="400" text-anchor="start" class="">Source: benchmark/results/2026-10-03-raw-vs-fusion.json · measured revision fc942197 (historical).</text>
+</svg>
