@@ -20,7 +20,7 @@ test('routine hook reminds small reads and short commands without permission dec
     ['Bash', { command: 'node --version' }],
   ] as const) {
     const output = run(tool, args);
-    assert.match(output.additionalContext, /fusion_inspect|fusion-jev run/);
+    assert.match(output.additionalContext, /fusion_assist/);
     assert.equal(output.permissionDecision, undefined);
     assert.equal(output.updatedInput, undefined);
   }

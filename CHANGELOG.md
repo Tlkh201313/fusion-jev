@@ -8,6 +8,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 - Local stdio accepts host-selected absolute project roots by default; FUSION_WORKSPACE_ACCESS=restricted retains exact-root isolation.
 - Both adapters use Fusion for supported routine reads, commands and minor tasks. Codex ships the assist skill; Claude reminds small native reads and short commands.
+- Configured assistance asks Jev to select even known small read/list/search/Git actions and exact host command plans; inspection becomes a recovery fallback.
+- Fix informational Git executable detection across path styles and private Windows evidence checks for verified local account aliases.
 - Document scoped host settings for skipping repeated Fusion/Jev tool prompts.
 
 - Renamed the npm package from `fusion-jev-mcp` to `fusion-jev`, and the Claude Code marketplace from `fusion-local` to `fusion-jev`. The binary is `fusion-jev`; the on-disk configuration and evidence directory name stays `fusion-jev-mcp`. Existing `fusion-jev@fusion-local` installs do not update across the rename: run `/plugin uninstall fusion-jev@fusion-local`, then add this marketplace and `/plugin install fusion-jev@fusion-jev`.

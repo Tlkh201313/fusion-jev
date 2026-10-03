@@ -136,6 +136,8 @@ test('conservative detection: unknown flags, other programs, mutating forms and 
   assert.equal(summarizeGit(['git', 'log'], 'not a log at all\n'), undefined);
   assert.equal(summarizeGit(['git', 'diff'], 'diff --cc file\n@@@ -1 -1 +1 @@@\n'), undefined);
   assert.ok(summarizeGit(['C:\\Program Files\\Git\\cmd\\git.exe', '--no-pager', 'log', '-50'], log));
+  assert.ok(summarizeGit(['/usr/bin/git', 'log', '-50'], log));
+  assert.equal(summarizeGit(['C:\\tools\\notgit.exe', 'log', '-50'], log), undefined);
 });
 
 test('summarizeChannel uses the git summary for stdout receipts, keeps the receipt bytes, and reports omitted bytes', async () => {

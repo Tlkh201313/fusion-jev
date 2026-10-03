@@ -189,13 +189,16 @@ export function createToolSpecs(config: FusionConfig) {
     ...workspaceCommon,
     title: 'Bounded repository assistance',
     description:
-      'Gather evidence with six fixed reads, two bounded Jev choices, and 20 seconds. Commands return to the host.',
+      'Default for routine tasks, even known small reads: configured Jev selects validated actions, Fusion gathers evidence. Supply command program/argv for an exact Jev-selected host execution plan. Six actions, two Jev calls, 20 seconds.',
     inputSchema: z.strictObject({
       ...rootField,
       task: z.string().min(1).max(4000),
       scope: z.string().min(1).max(4096).optional(),
       continuation: z.string().uuid().optional(),
       evidenceIds: z.array(z.string().uuid()).max(16).optional(),
+      command: z
+        .strictObject({ program: z.string().min(1).max(4096), argv: z.array(z.string().max(16000)).max(128) })
+        .optional(),
       maxActions: z.number().int().min(1).max(6).optional(),
       maxJevCalls: z.number().int().min(1).max(2).optional(),
     }),
@@ -273,7 +276,7 @@ export function createToolSpecs(config: FusionConfig) {
     ...workspaceCommon,
     title: 'Let Jev choose a workspace action',
     description:
-      'Use only when the correct read-only action is ambiguous. Jev chooses among listing, reading, searching, and fixed Git inspection. Prefer the named direct tools for known actions to avoid inference cost and delay.',
+      'Legacy single workspace choice. Prefer fusion_assist for routine delegation, including known small reads, searches, Git checks and exact command plans. Jev selects validated IDs; Fusion executes supported reads.',
     inputSchema: z.strictObject({
       ...rootField,
       task: z.string().min(1),

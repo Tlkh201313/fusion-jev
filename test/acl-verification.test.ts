@@ -14,6 +14,19 @@ const cli = fileURLToPath(new URL('../src/cli.ts', import.meta.url));
 const tsxImport = import.meta.resolve('tsx');
 const me = 'S-1-5-21-1-2-3-1001';
 
+test('built-in account aliases are private only for that exact current account', () => {
+  assert.equal(sddlIsPrivate('D:PAI(A;OICI;FA;;;LA)', 'S-1-5-21-1-2-3-500', true), true);
+  assert.equal(sddlIsPrivate('D:PAI(A;OICI;FA;;;LG)', 'S-1-5-21-1-2-3-501', true), true);
+  assert.equal(sddlIsPrivate('D:PAI(A;OICI;FA;;;LA)', 'S-1-5-21-1-2-3-500'), false, 'domain Administrator');
+  assert.equal(sddlIsPrivate('D:PAI(A;OICI;FA;;;LG)', 'S-1-5-21-1-2-3-501'), false, 'domain Guest');
+  for (const alias of ['LA', 'LG']) {
+    assert.equal(sddlIsPrivate(`D:PAI(A;OICI;FA;;;${alias})(A;OICI;FA;;;${me})`, me), false);
+    assert.equal(sddlIsPrivate(`D:PAI(A;OICI;FA;;;${alias})`, 'S-1-5-18'), false);
+  }
+  assert.equal(sddlIsPrivate('D:PAI(A;OICI;FA;;;LA)', 'S-1-5-21-1-2-3-1500'), false);
+  assert.equal(sddlIsPrivate('D:PAI(A;OICI;FA;;;LG)', 'S-1-5-21-1-2-3-500'), false);
+});
+
 test('only the current user, SYSTEM and Administrators make an ACL private', () => {
   assert.equal(sddlIsPrivate(`D:PAI(A;OICI;FA;;;${me})(A;OICIID;FA;;;SY)(A;OICIID;FA;;;BA)`, me), true);
   assert.equal(sddlIsPrivate(`D:AI(A;ID;FA;;;${me})(A;ID;FA;;;S-1-5-18)(A;ID;FA;;;S-1-5-32-544)`, me), true);
@@ -109,13 +122,13 @@ test('an already private cache is proven private without starting PowerShell', {
   const fake = brokenPowerShellRoot(home);
   const storageDir = join(home, 'evidence');
   // First open creates the directory (inheriting the private fixture ACL) and stores a receipt.
-  const store = withEnv({ SystemRoot: fake }, () => new EvidenceStore({ storageDir }));
+  const store = withEnv({ FUSION_SYSTEM_ROOT: fake }, () => new EvidenceStore({ storageDir }));
   const receipt = store.capture({
     source: { kind: 'command', cwd: home, argv: ['x'], channel: 'stdout' },
     bytes: Buffer.from('kept'),
   });
   // A second open must still succeed with a PowerShell that always fails: only the icacls check can have vouched for it.
-  const reopened = withEnv({ SystemRoot: fake }, () => new EvidenceStore({ storageDir }));
+  const reopened = withEnv({ FUSION_SYSTEM_ROOT: fake }, () => new EvidenceStore({ storageDir }));
   assert.equal((await reopened.expand({ id: receipt.id })).status, 'ok');
 });
 
@@ -131,7 +144,7 @@ test(
     writeFileSync(join(storageDir, '00000000-0000-4000-8000-000000000000.json'), '{"forged":true}');
     grantEveryone(storageDir);
     assert.throws(
-      () => withEnv({ SystemRoot: fake }, () => new EvidenceStore({ storageDir })),
+      () => withEnv({ FUSION_SYSTEM_ROOT: fake }, () => new EvidenceStore({ storageDir })),
       /Unable to make evidence storage private/,
     );
     assert.equal(

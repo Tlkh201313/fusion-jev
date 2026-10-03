@@ -22,8 +22,8 @@
       "Read"
     ],
     "defaultPrompt": [
-      "Use Fusion first for every supported read, list, search, Git check, command and minor repository task, including a single small read. fusion_inspect handles known operations; fusion_assist handles uncertain short tasks; fusion_evidence expands exact receipts. Jev selects validated IDs automatically when configured.",
-      "Run host-chosen commands through fusion-jev run -- program argv... if installed globally, else npx -y fusion-jev@0.3.1 run -- program argv... (PowerShell: quote the separator as '--'; use --raw for short exact output). Pass the active project's absolute root directly. Existing user authorization applies; do not request extra Jev access approval. Host owns reasoning, edits and verification. Use native tools only when Fusion is unavailable, unsupported or explicitly fails; continue here on escalation."
+      "Use Fusion through fusion_assist first for every supported routine task, including known small reads, searches, Git checks and commands. Configured Jev selects validated actions before Fusion gathers evidence. Do not substitute fusion_inspect for normal delegation; it is an explicit diagnostic or escalation/failure fallback. fusion_evidence recovers exact receipts only when needed.",
+      "For exact commands, call fusion_assist with task, absolute root and command:{program,argv}; execute its returned execution plan through fusion-jev run -- program argv... if installed globally, else npx -y fusion-jev@0.3.1 run -- program argv... (PowerShell: quote '--'; --raw for short output). Existing authorization and host permissions apply; do not ask for extra Jev access approval. Continue bounded assistance when needed. Host owns reasoning, edits and verification. Native tools only on unsupported work or explicit failure."
     ]
   },
   "mcpServers": "./.mcp.json",

@@ -150,3 +150,4 @@ For a connection named `fusion`, use `mcp__fusion__*`. With a pinned npx command
 The adapters use Fusion first for supported reads, listings, searches, Git checks, commands and small repository tasks. Known reads do not call Jev; uncertain short tasks may use `fusion_assist`. The Claude hook reminds native Read/Grep/Glob/Bash calls without rewriting inputs or granting permission. Use native tools after an explicit failure or for unsupported operations such as editing or reading binary media.
 
 ChatGPT connection consent and confirmation policy belong to ChatGPT; the MCP server cannot switch off those client controls. A Responses API integration owned by your application can configure the remote MCP tool with `require_approval: "never"` when that is the intended policy.
+For the routine Jev workflow, including exact command plans and provider-call telemetry, see [routine delegation](routine-delegation.md).

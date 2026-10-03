@@ -58,7 +58,9 @@ function createToolContext(
     }
     let assistance = byRoot.get(service.root);
     if (!assistance) {
-      assistance = new AssistanceService(service, router, evidenceStore);
+      assistance = new AssistanceService(service, router, evidenceStore, undefined, {
+        delegateKnownActions: Boolean(config.jev.apiKey),
+      });
       byRoot.set(service.root, assistance);
     }
     return assistance;
@@ -159,7 +161,7 @@ export function createFusionMcpServer(options: McpOptions, requestSignal?: () =>
   const serverInfo = { name: 'fusion-jev', title: 'Fusion Jev', version: '0.3.1' };
   const server = new McpServer(serverInfo, {
     instructions:
-      `Use Fusion inspection first for every supported read/list/search/Git check, command and minor repo task, even small reads. fusion_inspect: known ops; fusion_assist: uncertain tasks; fusion_evidence: receipts. Jev picks validated IDs; no extra Jev approval. Run fusion-jev run -- program argv... if installed globally, else npx -y fusion-jev@${serverInfo.version} run -- program argv... (--raw for short output; PowerShell: '--'). Host reasons, edits and verifies. RTK/native tools only on failure/unsupported work. ${hasWorkspace ? workspaceHint : 'No workspace is exposed.'}`.trim(),
+      `Use Fusion through fusion_assist first for routine reads/searches/Git/commands, even small known tasks. Configured Jev selects validated IDs before actions. command:{program,argv} plans exact commands. Run returned plans through fusion-jev run -- program argv... if installed globally, else npx -y fusion-jev@${serverInfo.version} run -- program argv... (--raw for short output; PowerShell: '--'). fusion_inspect is fallback inspection; fusion_evidence recovers receipts. No extra Jev approval. Host verifies. RTK/native on unsupported work/failure. ${hasWorkspace ? workspaceHint : 'No workspace is exposed.'}`.trim(),
   });
   const specs = createToolSpecs(config);
   registerTools(server, ctx, specs, hasWorkspace);

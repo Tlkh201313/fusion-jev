@@ -23,6 +23,7 @@ export interface AssistRequest {
   evidenceIds?: string[];
   maxActions?: number;
   maxJevCalls?: number;
+  command?: { program: string; argv: string[] };
 }
 export interface AssistResult {
   status: 'evidence' | 'continue' | 'escalate';
@@ -65,7 +66,7 @@ export interface AssistResult {
 
 type Action = {
   id: string;
-  kind: 'list' | 'read' | 'search' | 'git_status' | 'git_diff' | 'git_log';
+  kind: 'list' | 'read' | 'search' | 'git_status' | 'git_diff' | 'git_log' | 'command';
   path?: string;
   query?: string;
   offset?: number;
@@ -99,6 +100,7 @@ type State = {
   checks: CheckSuggestion[];
   checkSources?: Array<{ path: string; content: string }>;
   hostActionIssued?: boolean;
+  command?: AssistRequest['command'];
   expectedResearchTool?: 'host_search' | 'host_browser' | 'host_docs';
   commandCarry?: { id: string; bytes: Buffer; startByte: number; dropping: boolean; omittedLongLines: number };
   routingReason?: ReasonCode;
@@ -183,6 +185,7 @@ export class AssistanceService {
     private readonly router: RoutingService,
     private readonly evidence: EvidenceStore,
     private readonly clock: () => number = Date.now,
+    private readonly options: { delegateKnownActions?: boolean } = {},
   ) {}
 
   private result(
@@ -238,6 +241,17 @@ export class AssistanceService {
   }
 
   private async stateFor(request: AssistRequest): Promise<State | null> {
+    if (
+      request.command &&
+      (typeof request.command.program !== 'string' ||
+        !request.command.program.trim() ||
+        request.command.program.includes('\0') ||
+        !Array.isArray(request.command.argv) ||
+        request.command.argv.length > 128 ||
+        request.command.argv.some((arg) => typeof arg !== 'string' || arg.includes('\0')) ||
+        Buffer.byteLength(JSON.stringify(request.command)) > 16000)
+    )
+      throw new WorkspaceError('INVALID_REQUEST', 'Invalid command program or argv');
     if (!request.task?.trim() || request.task.length > 4000)
       throw new WorkspaceError('INVALID_REQUEST', 'Invalid assist task');
     if (request.root !== undefined) {
@@ -265,6 +279,7 @@ export class AssistanceService {
         previous.root !== this.workspace.root ||
         previous.scope !== scope ||
         previous.task !== request.task.trim() ||
+        !isDeepStrictEqual(previous.command, request.command) ||
         (request.maxActions !== undefined && request.maxActions !== previous.maxActions) ||
         (request.maxJevCalls !== undefined && request.maxJevCalls !== previous.maxJevCalls)
       )
@@ -293,6 +308,7 @@ export class AssistanceService {
       evidenceQueue: [],
       knownEvidence: new Set(),
       checks: [],
+      command: request.command ? structuredClone(request.command) : undefined,
     };
     this.remember(state);
     return state;
@@ -361,17 +377,25 @@ export class AssistanceService {
     candidates: Action[],
     signal?: AbortSignal,
   ): Promise<Action | 'provider_unavailable' | 'jev_limit' | 'choice_declined' | 'invalid_selection'> {
-    if (candidates.length === 1) return candidates[0]!;
+    if (candidates.length === 1 && !this.options.delegateKnownActions) return candidates[0]!;
     if (state.jevCalls >= state.maxJevCalls) return 'jev_limit';
     const ids = candidates.map((action) => action.id);
     const routeRequest: RouteRequest = {
       task: state.task,
       strategy: 'jev-only',
       cache: false,
+      context: {
+        scope: state.scope,
+        candidateContract: candidates.some((action) => action.kind === 'command')
+          ? 'IDs select the exact requested command plan. The host runs the selected Fusion wrapper under its existing authorization; Jev cannot change the program, argv or cwd.'
+          : 'IDs select preconstructed bounded local read/list/search/Git actions in this project scope.',
+      },
       tools: [
         {
           name: 'assist_action',
-          description: 'Select one preconstructed workspace read action.',
+          description: candidates.some((action) => action.kind === 'command')
+            ? 'Select one validated exact host command plan.'
+            : 'Select one preconstructed workspace read action.',
           readOnly: true,
           inputSchema: {
             type: 'object',
@@ -543,6 +567,7 @@ export class AssistanceService {
     action: Action,
     signal: AbortSignal,
   ): Promise<'evidence' | 'continue' | 'stalled'> {
+    if (action.kind === 'command') return 'stalled'; // Commands are returned as exact host execution plans.
     const fingerprint = JSON.stringify(action);
     if (state.seen.has(fingerprint)) return 'stalled';
     state.seen.add(fingerprint);
@@ -800,6 +825,33 @@ export class AssistanceService {
       if (supplied) return supplied;
     }
     if (request.continuation && state.hostActionIssued) return this.result(state, 'escalate', 'stalled', startedAt);
+    if (state.command) {
+      const command = state.command;
+      const selected = await this.select(
+        state,
+        [
+          {
+            id: 'host_command',
+            kind: 'command',
+            description: `Run the host-supplied command in the selected project: ${JSON.stringify(command)}`,
+          },
+        ],
+        actionSignal,
+      );
+      if (this.clock() >= state.deadlineAt || actionSignal.aborted)
+        return this.result(state, 'escalate', 'deadline', startedAt);
+      if (typeof selected === 'string') return this.result(state, 'escalate', selected, startedAt);
+      const argv = [command.program, ...command.argv];
+      return this.result(state, 'continue', 'host_action', startedAt, {
+        kind: 'command',
+        cwd: state.root,
+        argv,
+        requiresApproval: true,
+        execution: { program: 'fusion-jev', argv: ['run', `--cwd=${state.root}`, '--', ...argv] },
+        instruction:
+          'Execute the exact Fusion wrapper program and argv using existing user authorization and the configured host permission policy. Do not ask for separate Jev access approval. Preserve argv as data; quote it correctly if the host requires shell text. Host verifies the result.',
+      });
+    }
     const checksRequested =
       /\b(?:discover|list|show|find)\b.*\bchecks?\b/i.test(state.task) ||
       /\b(?:run|execute)\b.*\b(?:tests?|checks?|lint|build|typecheck)\b/i.test(state.task);
@@ -835,7 +887,24 @@ export class AssistanceService {
             : /build/i.test(state.task)
               ? 'build'
               : 'check';
-      const chosen = state.checks.find((check) => check.label.toLowerCase().includes(wanted)) ?? state.checks[0];
+      const matching = state.checks.filter((check) => check.label.toLowerCase().includes(wanted));
+      const choices = matching.length ? matching : state.checks;
+      if (!choices.length) return this.result(state, 'escalate', 'stalled', startedAt);
+      const selected = this.options.delegateKnownActions
+        ? await this.select(
+            state,
+            choices.map((check) => ({
+              id: check.id,
+              kind: 'command' as const,
+              description: `${check.label}: ${JSON.stringify(check.argv)}; cwd=${check.cwd}`,
+            })),
+            actionSignal,
+          )
+        : undefined;
+      if (this.clock() >= state.deadlineAt || actionSignal.aborted)
+        return this.result(state, 'escalate', 'deadline', startedAt);
+      if (typeof selected === 'string') return this.result(state, 'escalate', selected, startedAt);
+      const chosen = selected ? choices.find((check) => check.id === selected.id) : choices[0];
       if (!chosen) return this.result(state, 'escalate', 'stalled', startedAt);
       const execution = { program: 'fusion-jev', argv: ['run', `--cwd=${chosen.cwd}`, '--', ...chosen.argv] };
       return this.result(state, 'continue', 'host_action', startedAt, {

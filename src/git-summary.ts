@@ -1,4 +1,4 @@
-import { basename } from 'node:path';
+import { win32 } from 'node:path';
 import { clip } from './util/text.js';
 
 /**
@@ -28,7 +28,8 @@ interface GitCommand {
 }
 
 function parseCommand(argv: readonly string[]): GitCommand | undefined {
-  const program = basename(argv[0] ?? '')
+  const program = win32
+    .basename(argv[0] ?? '')
     .toLowerCase()
     .replace(/\.exe$/, '');
   if (program !== 'git') return undefined;
